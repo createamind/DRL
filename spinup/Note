@@ -1,0 +1,48 @@
+
+Program Flow
+
+# run.py
+if __name__ == '__main__':
+parse_and_execute_grid_search(cmd, args)       # cmd: 'ddpg'
+
+def parse_and_execute_grid_search(cmd, args):
+    arg_dict  # {'env': ['Pendulum-v0'], 'exp_name': ['ddpg-pendulum-v0-test1'], 'seed': [3]}
+    algo = eval('spinup.'+cmd)                 # algo: spinup.ddpg
+    eg = ExperimentGrid(name=exp_name)
+    eg.run(algo, **run_kwargs)
+
+    # run_utils.py
+    class ExperimentGrid:
+        self.keys =
+        self.vals =
+        def run(self, thunk, num_cpu=1, data_dir=None, datestamp=False):  # thunk: algo
+            var   # {'seed': 3, 'env_name': 'Pendulum-v0'}
+            thunk_ = thunk
+            call_experiment(exp_name, thunk_, num_cpu=num_cpu, data_dir=data_dir, datestamp=datestamp, **var)
+
+    def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None, datestamp=False, **kwargs):
+        def thunk_plus():
+            ...
+            thunk(**kwargs)
+        pickled_thunk = cloudpickle.dumps(thunk_plus)
+        encoded_thunk = base64.b64encode(zlib.compress(pickled_thunk)).decode('utf-8')
+        subprocess.check_call(cmd, env=os.environ)  # cmd: ['python', 'run_entrypoint.py', encoded_thunk]
+
+        # run_entrypoint.py
+        thunk = pickle.loads(zlib.decompress(base64.b64decode(args.encoded_thunk)))   # encoded_thunk: <func> thunk_plus
+        thunk()
+        # run_utils.py
+        def thunk_plus():
+            kwargs['seed'] = seed
+            kwargs['logger_kwargs'] = setup_logger_kwargs(exp_name, seed, data_dir, datestamp)
+            kwargs['env_fn'] = lambda : gym.make(env_name)
+            thunk(**kwargs)                               # thunk: algo: spinup.ddpg
+
+            # ddpg.py
+            def ddpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+                    steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
+                    polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000,
+                    act_noise=0.1, max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
+
+
+

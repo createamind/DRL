@@ -121,6 +121,10 @@ def ddpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
     env, test_env = env_fn(), env_fn()
+    # env.seed(seed)
+    # test_env.seed(seed)
+
+
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.shape[0]
 
@@ -130,7 +134,7 @@ def ddpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
-    # Inputs to computation graph
+    # Inputs to computation graph (_ph:placeholder)
     x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders(obs_dim, act_dim, obs_dim, None, None)
 
     # Main outputs from computation graph
@@ -227,6 +231,7 @@ def ddpg(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # most recent observation!
         o = o2
 
+        # End of episode. Training.
         if d or (ep_len == max_ep_len):
             """
             Perform all DDPG updates at the end of the trajectory,

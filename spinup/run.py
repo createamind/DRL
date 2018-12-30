@@ -174,7 +174,7 @@ if __name__ == '__main__':
     ExperimentGrid run routine to execute each possible experiment.
     """
 
-    cmd = sys.argv[1] if len(sys.argv) > 1 else 'help'
+    cmd = sys.argv[1] if len(sys.argv) > 1 else 'help'   # cmd: 'ddpg'
     valid_algos = ['vpg', 'trpo', 'ppo', 'ddpg', 'td3', 'sac']
     valid_utils = ['plot', 'test_policy']
     valid_help = ['--help', '-h', 'help']
@@ -227,4 +227,6 @@ if __name__ == '__main__':
         # Assume that the user plans to execute an algorithm. Run custom
         # parsing on the arguments and build a grid search to execute.
         args = sys.argv[2:]
+        # Interprets algorithm name and cmd line args into an ExperimentGrid.
+        # Construct and execute the experiment grid.
         parse_and_execute_grid_search(cmd, args)

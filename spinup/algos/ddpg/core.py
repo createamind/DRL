@@ -31,6 +31,6 @@ def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu,
         pi = act_limit * mlp(x, list(hidden_sizes)+[act_dim], activation, output_activation)
     with tf.variable_scope('q'):
         q = tf.squeeze(mlp(tf.concat([x,a], axis=-1), list(hidden_sizes)+[1], activation, None), axis=1)
-    with tf.variable_scope('q', reuse=True):
+    with tf.variable_scope('q', reuse=True):  # if reuse = False, error:Variable main/q/dense/kernel already exists.
         q_pi = tf.squeeze(mlp(tf.concat([x,pi], axis=-1), list(hidden_sizes)+[1], activation, None), axis=1)
     return pi, q, q_pi

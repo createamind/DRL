@@ -152,13 +152,14 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None,
         if 'env_name' in kwargs:
             import gym
             env_name = kwargs['env_name']
+            # env_fn for making gym game
             kwargs['env_fn'] = lambda : gym.make(env_name)
             del kwargs['env_name']
 
         # Fork into multiple processes
         mpi_fork(num_cpu)
 
-        # Run thunk
+        # 2. Run thunk(the algorithm)
         thunk(**kwargs)
 
     # Prepare to launch a script to run the experiment
@@ -168,6 +169,7 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None,
     entrypoint = osp.join(osp.abspath(osp.dirname(__file__)),'run_entrypoint.py')
     cmd = [sys.executable if sys.executable else 'python', entrypoint, encoded_thunk]
     try:
+        # 1. Run the cmd ($python run_entrypoint.py encoded_trunk of function thunk_plus)
         subprocess.check_call(cmd, env=os.environ)
     except CalledProcessError:
         err_msg = '\n'*3 + '='*DIV_LINE_WIDTH + '\n' + dedent("""
