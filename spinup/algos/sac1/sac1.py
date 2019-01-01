@@ -150,34 +150,34 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, **ac_kwargs)
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, _, _, _, _, _, v_targ  = actor_critic(x2_ph, a_ph, **ac_kwargs)
+        _, _, logp_pi_, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, **ac_kwargs)
 
     # Experience buffer
     replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in 
-                       ['main/pi', 'main/q1', 'main/q2', 'main/v', 'main'])
+                       ['main/pi', 'main/q1', 'main/q2', 'main'])
     print(('\nNumber of parameters: \t pi: %d, \t' + \
-           'q1: %d, \t q2: %d, \t v: %d, \t total: %d\n')%var_counts)
+           'q1: %d, \t q2: %d, \t total: %d\n')%var_counts)
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi, q2_pi)
+    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    q_backup = tf.stop_gradient(r_ph + gamma*(1-d_ph)*v_targ)
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi)
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi_)
+    q_backup = r_ph + gamma*(1-d_ph)*v_backup
+
 
     # Soft actor-critic losses
     pi_loss = tf.reduce_mean(alpha * logp_pi - q1_pi)
     q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
     q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
-    v_loss = 0.5 * tf.reduce_mean((v_backup - v)**2)
-    value_loss = q1_loss + q2_loss + v_loss
+    value_loss = q1_loss + q2_loss
 
     # Policy train op 
     # (has to be separate from value train op, because q1_pi appears in pi_loss)
@@ -187,7 +187,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # Value train op
     # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    value_params = get_vars('main/q') + get_vars('main/v')
+    value_params = get_vars('main/q')
     with tf.control_dependencies([train_pi_op]):
         train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
 
@@ -198,7 +198,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                   for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
 
     # All ops to call during one training step
-    step_ops = [pi_loss, q1_loss, q2_loss, v_loss, q1, q2, v, logp_pi, 
+    step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi,
                 train_pi_op, train_value_op, target_update]
 
     # Initializing targets to match main variables
@@ -207,11 +207,11 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
-    sess.run(target_init)
+    # sess.run(target_init)
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
-                                outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2, 'v': v})
+                                outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
@@ -262,7 +262,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # most recent observation!
         o = o2
 
-        # End of episode. Training.
+        # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len):
             """
             Perform all SAC updates at the end of the trajectory.
@@ -277,10 +277,11 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
                             }
+                # step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
                 logger.store(LossPi=outs[0], LossQ1=outs[1], LossQ2=outs[2],
-                             LossV=outs[3], Q1Vals=outs[4], Q2Vals=outs[5],
-                             VVals=outs[6], LogPi=outs[7])
+                            Q1Vals=outs[3], Q2Vals=outs[4],
+                            LogPi=outs[5])
 
             logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -297,6 +298,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             # Test the performance of the deterministic version of the agent.
             test_agent()
 
+            # logger.store: store the data; logger.log_tabular: log the data; logger.dump_tabular: write the data
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
             logger.log_tabular('EpRet', with_min_and_max=True)
@@ -306,12 +308,12 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Q1Vals', with_min_and_max=True) 
             logger.log_tabular('Q2Vals', with_min_and_max=True) 
-            logger.log_tabular('VVals', with_min_and_max=True) 
+            # logger.log_tabular('VVals', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
             logger.log_tabular('LossQ2', average_only=True)
-            logger.log_tabular('LossV', average_only=True)
+            # logger.log_tabular('LossV', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
@@ -323,7 +325,7 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--exp_name', type=str, default='sac1')
     args = parser.parse_args()
 

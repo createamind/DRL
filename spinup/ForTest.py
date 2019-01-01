@@ -37,13 +37,13 @@ b = tf.Variable(0.0)
 with tf.control_dependencies([z_plus_1]):
     c=e+d
 a=tf.add(c,b)
-
+f=tf.Variable(0.0)
 
 sess=tf.Session()
 sess.run(tf.initialize_all_variables())
 
 
-print(sess.run(a))
+print(sess.run([a,f]))
 print(sess.run(z))
 
 
