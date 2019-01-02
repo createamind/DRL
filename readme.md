@@ -6,8 +6,9 @@ https://github.com/openai/spinningup
 
 sac1 added.
 
-refereces:
+references:
 Soft Actor-Critic Algorithms and Applications
+
 https://arxiv.org/abs/1812.05905
 
 
