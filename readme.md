@@ -4,7 +4,7 @@ Deep Reinforcement Learning
 ==================================
 https://github.com/openai/spinningup
 
-sac1 added.
+sac1 is added based on:
 
 references:
 Soft Actor-Critic Algorithms and Applications
