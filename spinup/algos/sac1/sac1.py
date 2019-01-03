@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from numbers import Number
 import gym
 import time
 from spinup.algos.sac1 import core
@@ -46,7 +47,7 @@ Soft Actor-Critic
 """
 def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
-        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
+        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
@@ -82,8 +83,6 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             ``q2_pi``    (batch,)          | Gives the composition of ``q2`` and 
                                            | ``pi`` for states in ``x_ph``: 
                                            | q2(x, pi(x)).
-            ``v``        (batch,)          | Gives the value estimate for states
-                                           | in ``x_ph``. 
             ===========  ================  ======================================
 
         ac_kwargs (dict): Any kwargs appropriate for the actor_critic 
@@ -110,10 +109,10 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             where :math:`\\rho` is polyak. (Always between 0 and 1, usually 
             close to 1.)
 
-        lr (float): Learning rate (used for both policy and value learning).
+        lr (float): Learning rate (used for policy/value/alpha learning).
 
-        alpha (float): Entropy regularization coefficient. (Equivalent to 
-            inverse of reward scale in the original SAC paper.)
+        alpha (float/'auto'): Entropy regularization coefficient. (Equivalent to
+            inverse of reward scale in the original SAC paper.) / 'auto': alpha is automated.
 
         batch_size (int): Minibatch size for SGD.
 
@@ -165,6 +164,19 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     print(('\nNumber of parameters: \t pi: %d, \t' + \
            'q1: %d, \t q2: %d, \t total: %d\n')%var_counts)
 
+######
+    if alpha == 'auto':
+        target_entropy = (-np.prod(env.action_space.shape))
+
+        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float32, initializer=0.0)
+        alpha = tf.exp(log_alpha)
+
+        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
+
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='alpha_optimizer')
+        train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
+######
+
     # Min Double-Q:
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
@@ -198,8 +210,13 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                   for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
 
     # All ops to call during one training step
-    step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi,
+    if isinstance(alpha, Number):
+        step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, tf.identity(alpha),
                 train_pi_op, train_value_op, target_update]
+    else:
+        step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, alpha,
+                train_pi_op, train_value_op, target_update, train_alpha_op]
+
 
     # Initializing targets to match main variables
     target_init = tf.group([tf.assign(v_targ, v_main)
@@ -277,11 +294,11 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
                             }
-                # step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, train_pi_op, train_value_op, target_update]
+                # step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
                 logger.store(LossPi=outs[0], LossQ1=outs[1], LossQ2=outs[2],
                             Q1Vals=outs[3], Q2Vals=outs[4],
-                            LogPi=outs[5])
+                            LogPi=outs[5], Alpha=outs[6])
 
             logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -306,6 +323,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('EpLen', average_only=True)
             logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
+            logger.log_tabular('Alpha',average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=True) 
             logger.log_tabular('Q2Vals', with_min_and_max=True) 
             # logger.log_tabular('VVals', with_min_and_max=True)
@@ -326,7 +344,8 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=200)
-    parser.add_argument('--exp_name', type=str, default='sac1')
+    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--exp_name', type=str, default='sac1_auto_2')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -334,5 +353,5 @@ if __name__ == '__main__':
 
     sac1(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
         #ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
-        gamma=args.gamma, seed=args.seed, epochs=args.epochs,
+        gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
         logger_kwargs=logger_kwargs)
