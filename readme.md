@@ -20,11 +20,13 @@ Soft Actor-Critic Algorithms and Applications
 
 https://arxiv.org/abs/1812.05905
 
-ddgp vs sac1 on gym env 'Pendulum-v0':
+* ddgp vs sac1
+
+gym env 'Pendulum-v0':(MinEpRet)
 
 <div>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/ddpg1000.png" width="250" style="display:inline"/>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_1000.png" width="250" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/ddpg1000.png" width="300" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_1000.png" width="300" style="display:inline"/>
 </div>
 
 
