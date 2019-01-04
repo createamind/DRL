@@ -315,7 +315,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             # Test the performance of the deterministic version of the agent.
             test_agent()
 
-            # logger.store: store the data; logger.log_tabular: log the data; logger.dump_tabular: write the data
+            # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
             logger.log_tabular('EpRet', with_min_and_max=True)
@@ -343,9 +343,9 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_auto_2')
+    parser.add_argument('--exp_name', type=str, default='sac1_1000_auto_c')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
