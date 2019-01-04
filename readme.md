@@ -27,11 +27,24 @@ ddgp vs sac1
 * gym env 'Pendulum-v0':(MinEpRet)
 
 <div>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/ddpg1000.png" width="400" style="display:inline"/>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_1000.png" width="400" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/ddpg1000.png" width="350" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_1000.png" width="350" style="display:inline"/>
 </div>
 
 
 
 ### Awesome-DRL-Papers
-INFOBOT: TRANSFER AND EXPLORATION VIA THE INFORMATION BOTTLENECK (codes to be released.)
+INFOBOT: TRANSFER AND EXPLORATION VIA THE INFORMATION BOTTLENECK
+* CODE: to be released.
+
+Unsupervised Meta-Learning for Reinforcement Learning
+* https://arxiv.org/pdf/1806.04640.pdf
+
+DIVERSITY IS ALL YOU NEED: LEARNING SKILLS WITHOUT A REWARD FUNCTION (DIAYN)
+* https://arxiv.org/pdf/1802.06070.pdf
+* CODE: https://github.com/ben-eysenbach/sac
+
+Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks (MAML)
+* https://arxiv.org/abs/1703.03400
+
+
