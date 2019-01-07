@@ -181,7 +181,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi_)
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi)
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
@@ -224,7 +224,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
-    # sess.run(target_init)
+    sess.run(target_init)
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
@@ -345,7 +345,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_1000_auto_c')
+    parser.add_argument('--exp_name', type=str, default='sac1_1000_auto_nt_3')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs

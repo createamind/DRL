@@ -1,11 +1,12 @@
 import numpy as np
 import tensorflow as tf
+from numbers import Number
 import gym
 import time
-from spinup.algos.sac import core
-from spinup.algos.sac.core import get_vars
+from spinup.algos.sac1n import core
+from spinup.algos.sac1n.core import get_vars
 from spinup.utils.logx import EpochLogger
-
+from gym.spaces import Box, Discrete
 
 class ReplayBuffer:
     """
@@ -44,9 +45,9 @@ Soft Actor-Critic
 (With slight variations that bring it closer to TD3)
 
 """
-def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
+def sac1n(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
-        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
+        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
@@ -82,8 +83,6 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             ``q2_pi``    (batch,)          | Gives the composition of ``q2`` and 
                                            | ``pi`` for states in ``x_ph``: 
                                            | q2(x, pi(x)).
-            ``v``        (batch,)          | Gives the value estimate for states
-                                           | in ``x_ph``. 
             ===========  ================  ======================================
 
         ac_kwargs (dict): Any kwargs appropriate for the actor_critic 
@@ -110,10 +109,10 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             where :math:`\\rho` is polyak. (Always between 0 and 1, usually 
             close to 1.)
 
-        lr (float): Learning rate (used for both policy and value learning).
+        lr (float): Learning rate (used for policy/value/alpha learning).
 
-        alpha (float): Entropy regularization coefficient. (Equivalent to 
-            inverse of reward scale in the original SAC paper.)
+        alpha (float/'auto'): Entropy regularization coefficient. (Equivalent to
+            inverse of reward scale in the original SAC paper.) / 'auto': alpha is automated.
 
         batch_size (int): Minibatch size for SGD.
 
@@ -135,61 +134,85 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     tf.set_random_seed(seed)
     np.random.seed(seed)
 
+
     env, test_env = env_fn(), env_fn()
     obs_dim = env.observation_space.shape[0]
-    act_dim = env.action_space.shape[0]
+    obs_space = env.observation_space
+    act_dim = env.action_space.n
+    act_space = env.action_space
 
-    # Action limit for clamping: critically, assumes all dimensions share the same bound!
-    act_limit = env.action_space.high[0]
 
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
     # Inputs to computation graph
-    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders(obs_dim, act_dim, obs_dim, None, None)
+    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
+
+
+    ######
+    if alpha == 'auto':
+        # target_entropy = (-np.prod(env.action_space.n))
+        target_entropy = (-np.prod(env.action_space.n))
+
+        log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
+        alpha = tf.exp(log_alpha)
+    ######
+
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, alpha, **ac_kwargs)
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, _, _, _, _, _, v_targ  = actor_critic(x2_ph, a_ph, **ac_kwargs)
+        _, _, _, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, alpha,  **ac_kwargs)
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
+    if isinstance(act_space, Box):
+        a_dim = act_dim
+    elif isinstance(act_space, Discrete):
+        a_dim = 1
+    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=a_dim, size=replay_size)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in 
-                       ['main/pi', 'main/q1', 'main/q2', 'main/v', 'main'])
+                       ['main/pi', 'main/q1', 'main/q2', 'main'])
     print(('\nNumber of parameters: \t pi: %d, \t' + \
-           'q1: %d, \t q2: %d, \t v: %d, \t total: %d\n')%var_counts)
+           'q1: %d, \t q2: %d, \t total: %d\n')%var_counts)
+
+
+######
+    if isinstance(alpha,tf.Tensor):
+        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
+
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='alpha_optimizer')
+        train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
+######
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi, q2_pi)
+    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    q_backup = tf.stop_gradient(r_ph + gamma*(1-d_ph)*v_targ)
     v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi)
+    q_backup = r_ph + gamma*(1-d_ph)*v_backup
+
 
     # Soft actor-critic losses
-    pi_loss = tf.reduce_mean(alpha * logp_pi - q1_pi)
     q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
     q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
-    v_loss = 0.5 * tf.reduce_mean((v_backup - v)**2)
-    value_loss = q1_loss + q2_loss + v_loss
+    value_loss = q1_loss + q2_loss
 
-    # Policy train op 
-    # (has to be separate from value train op, because q1_pi appears in pi_loss)
-    pi_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    train_pi_op = pi_optimizer.minimize(pi_loss, var_list=get_vars('main/pi'))
+    # # Policy train op
+    # # (has to be separate from value train op, because q1_pi appears in pi_loss)
+    # pi_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
+    # train_pi_op = pi_optimizer.minimize(pi_loss, var_list=get_vars('main/pi'))
 
     # Value train op
     # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    value_params = get_vars('main/q') + get_vars('main/v')
-    with tf.control_dependencies([train_pi_op]):
-        train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
+    value_params = get_vars('main/q')
+    #with tf.control_dependencies([train_pi_op]):
+    train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
 
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)
@@ -198,8 +221,12 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                   for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
 
     # All ops to call during one training step
-    step_ops = [pi_loss, q1_loss, q2_loss, v_loss, q1, q2, v, logp_pi, 
-                train_pi_op, train_value_op, target_update]
+    if isinstance(alpha, Number):
+        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, tf.identity(alpha),
+                train_value_op, target_update]
+    else:
+        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha,
+                train_value_op, target_update, train_alpha_op]
 
     # Initializing targets to match main variables
     target_init = tf.group([tf.assign(v_targ, v_main)
@@ -211,11 +238,11 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
-                                outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2, 'v': v})
+                                outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
-        return sess.run(act_op, feed_dict={x_ph: o.reshape(1,-1)})[0]
+        return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
     def test_agent(n=10):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
@@ -244,6 +271,8 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             a = get_action(o)
         else:
             a = env.action_space.sample()
+
+
 
         # Step the env
         o2, r, d, _ = env.step(a)
@@ -277,10 +306,11 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
                             }
+                # step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
-                logger.store(LossPi=outs[0], LossQ1=outs[1], LossQ2=outs[2],
-                             LossV=outs[3], Q1Vals=outs[4], Q2Vals=outs[5],
-                             VVals=outs[6], LogPi=outs[7])
+                logger.store(LossQ1=outs[0], LossQ2=outs[1],
+                            Q1Vals=outs[2], Q2Vals=outs[3],
+                            LogPi=outs[4], Alpha=outs[5])
 
             logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -305,14 +335,15 @@ def sac(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('EpLen', average_only=True)
             logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
+            logger.log_tabular('Alpha',average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=True) 
             logger.log_tabular('Q2Vals', with_min_and_max=True) 
-            logger.log_tabular('VVals', with_min_and_max=True) 
+            # logger.log_tabular('VVals', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
-            logger.log_tabular('LossPi', average_only=True)
+            # logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
             logger.log_tabular('LossQ2', average_only=True)
-            logger.log_tabular('LossV', average_only=True)
+            # logger.log_tabular('LossV', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
@@ -325,13 +356,14 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='sac_1000_5')
+    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--exp_name', type=str, default='sac1n_1000_breakout_0.2')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sac(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
-        gamma=args.gamma, seed=args.seed, epochs=args.epochs,
+    sac1n(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+        #ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
+        gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
         logger_kwargs=logger_kwargs)

@@ -94,6 +94,7 @@ def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu,
     pi *= action_scale
 
     # vfs
+    # tf.squeeze( shape(?,1), axis=1 ) = shape(?,)
     vf_mlp = lambda x : tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
     with tf.variable_scope('q1'):
         q1 = vf_mlp(tf.concat([x,a], axis=-1))
