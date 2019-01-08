@@ -302,7 +302,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Acrobot-v1')
+    parser.add_argument('--env', type=str, default='Acrobot-v1') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4
     parser.add_argument('--hid', type=int, default=64)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -310,7 +310,7 @@ if __name__ == '__main__':
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='ppo-Breakout-ram-v4')
+    parser.add_argument('--exp_name', type=str, default='Acrobot-v1')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
