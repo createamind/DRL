@@ -3,8 +3,8 @@ import tensorflow as tf
 from numbers import Number
 import gym
 import time
-from spinup.algos.sqn import core
-from spinup.algos.sqn.core import get_vars
+from spinup.algos.sqn1 import core
+from spinup.algos.sqn1.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
 
@@ -45,7 +45,7 @@ Soft Actor-Critic
 (With slight variations that bring it closer to TD3)
 
 """
-def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+def sqn1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
@@ -152,7 +152,8 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     ######
     if alpha == 'auto':
         # target_entropy = (-np.prod(env.action_space.n))
-        target_entropy = (np.prod(env.action_space.n))/4/10
+        # target_entropy = (np.prod(env.action_space.n))/4/10
+        target_entropy = 0.15
 
         log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
         alpha = tf.exp(log_alpha)
@@ -267,10 +268,13 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         from a uniform distribution for better exploration. Afterwards, 
         use the learned policy. 
         """
-        if t > start_steps:
+        # greedy
+        if t > start_steps and 10*t/total_steps > np.random.random():
             a = get_action(o)
         else:
             a = env.action_space.sample()
+
+        np.random.random()
 
 
         # Step the env
@@ -356,16 +360,16 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--max_ep_len', type=int, default=1000)
-    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--max_ep_len', type=int, default=None)
+    parser.add_argument('--alpha', default=0.01, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_Breakout-ram-v4_alphaauto2')
+    parser.add_argument('--exp_name', type=str, default='sqn1x_Breakout-ram-v4_alpha0.01_None')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+    sqn1(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
         #ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
