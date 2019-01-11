@@ -54,7 +54,7 @@ def run_policy(env, get_action, max_ep_len=None, num_episodes=100, render=True):
     while n < num_episodes:
         if render:
             env.render()
-            time.sleep(1e-3)
+            time.sleep(1e-2)
 
         a = get_action(o)
         o, r, d, _ = env.step(a)
