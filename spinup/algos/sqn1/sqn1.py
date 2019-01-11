@@ -268,8 +268,8 @@ def sqn1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         from a uniform distribution for better exploration. Afterwards, 
         use the learned policy. 
         """
-        # greedy
-        if t > start_steps and 10*t/total_steps > np.random.random():
+        # if t > start_steps and 10*t/total_steps > np.random.random(): # greedy
+        if t > start_steps:
             a = get_action(o)
         else:
             a = env.action_space.sample()
