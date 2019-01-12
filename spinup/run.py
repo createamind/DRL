@@ -175,7 +175,7 @@ if __name__ == '__main__':
     """
 
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'help'   # cmd: 'ddpg'
-    valid_algos = ['vpg', 'trpo', 'ppo', 'ddpg', 'td3', 'sac', 'sac1']
+    valid_algos = ['vpg', 'trpo', 'ppo', 'ddpg', 'td3', 'sac', 'sac1', 'sqn']
     valid_utils = ['plot', 'test_policy']
     valid_help = ['--help', '-h', 'help']
     valid_cmds = valid_algos + valid_utils + valid_help

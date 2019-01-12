@@ -80,6 +80,12 @@ def mpi_statistics_scalar(x, with_min_and_max=False):
     """
     x = np.array(x, dtype=np.float32)
     global_sum, global_n = mpi_sum([np.sum(x), len(x)])
+
+    # in case for 0 denominator
+    if global_n == 0:
+        global_n = 1
+        print("len(x) is 0.")
+
     mean = global_sum / global_n
 
     global_sum_sq = mpi_sum(np.sum((x - mean)**2))

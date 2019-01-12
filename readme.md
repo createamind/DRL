@@ -33,6 +33,7 @@ ddgp vs sac1
 
 
 
+
 ### Awesome-DRL-Papers
 INFOBOT: TRANSFER AND EXPLORATION VIA THE INFORMATION BOTTLENECK
 * code: to be released.
@@ -48,3 +49,5 @@ Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks (MAML)
 * https://arxiv.org/abs/1703.03400
 
 
+<img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1.png" width="550" style="display:inline"/>
+<img src="https://github.com/createamind/DRL/blob/master/video_pic/sqn.png" width="550" style="display:inline"/>
