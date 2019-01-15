@@ -83,7 +83,7 @@ def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), activation=tf.nn.relu,
         v_x= vf_mlp(x)
         # policy
         mu, pi, logp_pi = policy(alpha, v_x, act_dim)
-        mu_one_hot = tf.one_hot(mu, depth=act_dim)
+        # mu_one_hot = tf.one_hot(mu, depth=act_dim)
         pi_one_hot = tf.one_hot(pi, depth=act_dim)
 
         # q1_pi = tf.reduce_sum(v_x*mu_one_hot, axis=1)   # use max Q(s,a)

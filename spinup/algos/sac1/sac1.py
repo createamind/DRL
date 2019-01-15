@@ -338,14 +338,14 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='HalfCheetah-v2')
+    parser.add_argument('--env', type=str, default='Pendulum-v0')
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_1000_auto_nt_3')
+    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--exp_name', type=str, default='sac1_Pendulum-v0')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs

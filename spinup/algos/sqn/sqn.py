@@ -46,7 +46,7 @@ Soft Actor-Critic
 
 """
 def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
+        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -245,7 +245,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
-    def test_agent(n=1):  # number of tests
+    def test_agent(n=1):  # n: number of tests
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -268,7 +268,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         from a uniform distribution for better exploration. Afterwards, 
         use the learned policy. 
         """
-        if t > start_steps and 20*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
+        if t > start_steps and 100*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
         # if t > start_steps:
             a = get_action(o)
         else:
@@ -357,19 +357,19 @@ if __name__ == '__main__':
     parser.add_argument('--env', type=str, default='Breakout-ram-v4')  # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
-    parser.add_argument('--gamma', type=float, default=0.999)
+    parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--max_ep_len', type=int, default=5000)
-    parser.add_argument('--alpha', default=0.001, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.01, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_Breakout-ram-v4_alpha0.001_5000_0.999')
+    parser.add_argument('--exp_name', type=str, default='sqn_Breakout-ram-v4_alpha0.01debug')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        #ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
+        ac_kwargs=dict(hidden_sizes=[100,100]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
