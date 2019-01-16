@@ -48,7 +48,7 @@ Soft Actor-Critic
 def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
-        max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
+        max_ep_len=1000, logger_kwargs=dict(), save_freq=1, ensemble_size=10):
     """
 
     Args:
@@ -147,7 +147,9 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # Inputs to computation graph
     x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
-
+    # x_ph, x2_ph: shape(?,128)
+    # a_ph: shape(?,1)
+    # r_ph, d_ph: shape(?,)
 
     ######
     if alpha == 'auto':
@@ -162,11 +164,12 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, alpha, **ac_kwargs)
+        mu, pi, _, q1, _ = actor_critic(x_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
+        # _, _, logp_pi, _, _ = actor_critic(x2_ph, a_ph, alpha, **ac_kwargs)
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, _, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, alpha,  **ac_kwargs)
+        _, _, logp_pi_, _, q1_pi_= actor_critic(x2_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
 
     # Experience buffer
     if isinstance(act_space, Box):
@@ -184,24 +187,27 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
 ######
     if isinstance(alpha,tf.Tensor):
-        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
+        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi_ + target_entropy))
 
         alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 ######
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    #min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi)  ############################## alpha=0
+    v_backup = tf.stop_gradient(q1_pi_ - alpha * logp_pi_)  ############################## alpha=0
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
     # Soft actor-critic losses
-    q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
-    q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
-    value_loss = q1_loss + q2_loss
+    # q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
+    # q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
+    # value_loss = q1_loss + q2_loss
+    q1_loss = (q_backup - q1)**2
+    value_loss = q1_loss
+
 
     # # Policy train op
     # # (has to be separate from value train op, because q1_pi appears in pi_loss)
@@ -213,20 +219,20 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     value_params = get_vars('main/q')
     #with tf.control_dependencies([train_pi_op]):
-    train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
+    train_value_op = [value_optimizer.minimize(value_loss[...,i], var_list=value_params) for i in range(ensemble_size)]
 
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)
     with tf.control_dependencies([train_value_op]):
         target_update = tf.group([tf.assign(v_targ, polyak*v_targ + (1-polyak)*v_main)
-                                  for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
+                                  for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])         # zip([1,2,3,4],['a','b']) = [(1,'a'),(2,'b')]
 
     # All ops to call during one training step
     if isinstance(alpha, Number):
-        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, tf.identity(alpha),
+        step_ops = [q1_loss, q1, logp_pi_, tf.identity(alpha),
                 train_value_op, target_update]
     else:
-        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha,
+        step_ops = [q1_loss, q1, logp_pi_, alpha,
                 train_value_op, target_update, train_alpha_op]
 
     # Initializing targets to match main variables
@@ -239,14 +245,14 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
-                                outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
+                                outputs={'mu': mu, 'pi': pi, 'q1': q1})
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
     def test_agent(n=1):  # number of tests
-        global sess, mu, pi, q1, q2, q1_pi, q2_pi
+        global sess, mu, pi, q1
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
             while not(d or (ep_len == 1000)):  # max_ep_len
@@ -268,6 +274,9 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
         from a uniform distribution for better exploration. Afterwards, 
         use the learned policy. 
         """
+
+        active_head = np.random.randint(ensemble_size)
+
         if t > start_steps and 20*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
         # if t > start_steps:
             a = get_action(o)

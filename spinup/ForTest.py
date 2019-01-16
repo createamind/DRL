@@ -20,6 +20,7 @@ z = tf.Variable(0.0)
 z_plus_1 = tf.assign_add(z, 1)
 x_plus_1 = tf.assign_add(x, 1)
 y_plus_1 = tf.assign_add(y, 1)
+index = tf.random_uniform(minval=0, maxval=2, shape=[], dtype=tf.int32)
 
 with tf.control_dependencies([x_plus_1]):
     y = tf.identity(y)
@@ -45,6 +46,7 @@ sess.run(tf.initialize_all_variables())
 
 print(sess.run([a,f]))
 print(sess.run(z))
+print(sess.run(index))
 
 
 for i in range(5):

@@ -162,11 +162,11 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, alpha, **ac_kwargs)
+        mu, pi, _, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, alpha, **ac_kwargs)
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, _, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, alpha,  **ac_kwargs)
+        _, _, logp_pi_, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, alpha,  **ac_kwargs)
 
     # Experience buffer
     if isinstance(act_space, Box):
@@ -184,7 +184,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 ######
     if isinstance(alpha,tf.Tensor):
-        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
+        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi_ + target_entropy))
 
         alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
@@ -194,7 +194,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi)  ############################## alpha=0
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi_)  ############################## alpha=0
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
@@ -223,10 +223,10 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # All ops to call during one training step
     if isinstance(alpha, Number):
-        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, tf.identity(alpha),
+        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi_, tf.identity(alpha),
                 train_value_op, target_update]
     else:
-        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha,
+        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi_, alpha,
                 train_value_op, target_update, train_alpha_op]
 
     # Initializing targets to match main variables
@@ -374,17 +374,17 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=2000)
+    parser.add_argument('--epochs', type=int, default=5000)
     parser.add_argument('--max_ep_len', type=int, default=5000)
-    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='alpha0.8_400x300')
+    parser.add_argument('--exp_name', type=str, default='alpha0.1_200x100x50')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        #ac_kwargs=dict(hidden_sizes=[150,50]),
+        #ac_kwargs=dict(hidden_sizes=[200,100,50]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)

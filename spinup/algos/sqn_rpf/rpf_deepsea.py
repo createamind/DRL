@@ -180,14 +180,14 @@ class EnsembleQNetwork(snt.AbstractModule):
         with self._enter_variable_scope():
             # An ensemble of MLPs.
             self._models = [snt.nets.MLP(output_sizes=hidden_sizes + (num_actions,), **mlp_kwargs)
-                            for _ in range(num_ensemble)]
+                            for _ in range(num_ensemble)]                         # outputs: 10 x shape(?, 2)
 
         self._num_ensemble = num_ensemble
 
     def _build(self, inputs: tf.Tensor) -> tf.Tensor:
         inputs = snt.BatchFlatten()(inputs)
         # Forward all members of the ensemble and stack the output.
-        return tf.stack([model(inputs) for model in self._models], axis=1)
+        return tf.stack([model(inputs) for model in self._models], axis=1)        # outputs: shape(?, 10, 2)
 
 
 
