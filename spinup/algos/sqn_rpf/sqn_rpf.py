@@ -3,8 +3,8 @@ import tensorflow as tf
 from numbers import Number
 import gym
 import time
-from spinup.algos.sqn import core
-from spinup.algos.sqn.core import get_vars
+from spinup.algos.sqn_rpf import core
+from spinup.algos.sqn_rpf.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
 
@@ -45,7 +45,7 @@ Soft Actor-Critic
 (With slight variations that bring it closer to TD3)
 
 """
-def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
@@ -363,13 +363,13 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len', type=int, default=5000)
     parser.add_argument('--alpha', default=0.001, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_Breakout-ram-v4_alpha0.001_5000_0.999')
+    parser.add_argument('--exp_name', type=str, default='sqn_rpf_Breakout-ram-v4_alpha0.001_5000_0.999')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+    sqn_rpf(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
         #ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
