@@ -257,7 +257,14 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
     start_time = time.time()
-    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
+
+    o = env.reset()
+    o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0
+    # o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
+
+
     total_steps = steps_per_epoch * epochs
 
     # Main loop: collect experience in env and update/log each epoch
@@ -278,8 +285,11 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
         # Step the env
-        o2, r, d, _ = env.step(a)
+        # o2, r, d, _ = env.step(a)
         #print(a,o2)
+        o2, r, _, d = env.step(a)                     #####################
+        d = d['ale.lives'] < 5                        #####################
+
         ep_ret += r
         ep_len += 1
 
@@ -317,7 +327,12 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                             LogPi=outs[4], Alpha=outs[5])
 
             logger.store(EpRet=ep_ret, EpLen=ep_len)
-            o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
+
+            o = env.reset()
+            o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0
+            # o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
 
 
         # End of epoch wrap-up
@@ -359,17 +374,17 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=2000)
     parser.add_argument('--max_ep_len', type=int, default=5000)
-    parser.add_argument('--alpha', default=0.01, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_Breakout-ram-v4_alpha0.01debug')
+    parser.add_argument('--exp_name', type=str, default='alpha0.8_400x300')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[100,100]),
+        #ac_kwargs=dict(hidden_sizes=[150,50]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)

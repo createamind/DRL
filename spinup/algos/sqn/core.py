@@ -23,10 +23,11 @@ def placeholders_from_space(*args):
 
 
 
-def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
+def mlp(x, hidden_sizes=(32,), activation=None, output_activation=None):
     for h in hidden_sizes[:-1]:
-        x = tf.layers.dense(x, units=h, activation=activation)
-    return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
+        # x = tf.layers.dense(x, units=h, activation=activation)
+        x = tf.layers.dense(x, units=h, activation=activation, kernel_initializer=tf.variance_scaling_initializer(2.0))#, activity_regularizer=None)
+    return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation, kernel_initializer=tf.variance_scaling_initializer(2.0))#, activity_regularizer=None)
 
 def get_vars(scope):
     return [x for x in tf.global_variables() if scope in x.name]
