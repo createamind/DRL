@@ -70,7 +70,10 @@ Policies
 
 def softmax_policy(alpha, v_x, act_dim, ensemble_size):
 
-    random_index = tf.random_uniform(minval=0, maxval=ensemble_size, shape=[], dtype=tf.int32)
+    # random_index = tf.random_uniform(minval=0, maxval=ensemble_size, shape=[], dtype=tf.int32)
+    tf.get_variable_scope()._name = ''
+    with tf.variable_scope('random_head', reuse=True):
+        random_index = tf.get_variable(name='random_int', shape=[], dtype=tf.int32)
 
     pi_log = tf.nn.log_softmax(v_x/alpha)                      # shape(?, 4, 10)
     random_pi_log = tf.expand_dims(pi_log[...,random_index], axis=-1)    # shape(?, 4, 1)
@@ -98,8 +101,8 @@ Actor-Critics
 def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), ensemble_size=10, activation=tf.nn.relu,
                      output_activation=None, policy=softmax_policy, action_space=None):
 
-    if x.shape[1] == 128:       # for Breakout-ram-v4
-        x = (x - 128.0) / 128.0
+    if x.shape[1] == 128:           # for Breakout-ram-v4
+        x = (x - 128.0) / 128.0     # x: shape(?,128)
 
     act_dim = action_space.n
     a_one_hot = tf.one_hot(a, depth=act_dim, axis=1)    # a: shape(?,1), # a_one_hot: shape(?,4,1)

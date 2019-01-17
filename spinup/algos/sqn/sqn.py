@@ -45,6 +45,9 @@ Soft Actor-Critic
 (With slight variations that bring it closer to TD3)
 
 """
+
+""" make sure: max_ep_len < steps_per_epoch """
+
 def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
@@ -259,9 +262,9 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     start_time = time.time()
 
 
-    o = env.reset()
-    o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0
-    # o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+    # o = env.reset()                                                     #####################
+    # o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0            #####################
+    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
 
 
@@ -285,10 +288,10 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
         # Step the env
-        # o2, r, d, _ = env.step(a)
+        o2, r, d, _ = env.step(a)
         #print(a,o2)
-        o2, r, _, d = env.step(a)                     #####################
-        d = d['ale.lives'] < 5                        #####################
+        # o2, r, _, d = env.step(a)                     #####################
+        # d = d['ale.lives'] < 5                        #####################
 
         ep_ret += r
         ep_len += 1
@@ -306,7 +309,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         o = o2
 
         # End of episode. Training (ep_len times).
-        if d or (ep_len == max_ep_len):
+        if d or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
@@ -326,17 +329,18 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                             Q1Vals=outs[2], Q2Vals=outs[3],
                             LogPi=outs[4], Alpha=outs[5])
 
+            #if d:
             logger.store(EpRet=ep_ret, EpLen=ep_len)
 
 
-            o = env.reset()
-            o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0
-            # o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+            # o = env.reset()                                              #####################
+            # o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0     #####################
+            o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
 
 
         # End of epoch wrap-up
-        if t > 0 and t % steps_per_epoch == 0:  # and ep_len < steps_per_epoch:
+        if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
             # Save model
@@ -369,22 +373,22 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Breakout-ram-v4')  # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='LunarLander-v2')  # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
-    parser.add_argument('--max_ep_len', type=int, default=5000)
-    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--alpha', default=0.01, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='alpha0.1_200x100x50')
+    parser.add_argument('--exp_name', type=str, default='debugnew_LunarLander-v2_alpha0.01_100x100')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        #ac_kwargs=dict(hidden_sizes=[200,100,50]),
+        ac_kwargs=dict(hidden_sizes=[100,100]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
