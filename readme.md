@@ -31,7 +31,12 @@ ddgp vs sac1
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_1000.png" width="350" style="display:inline"/>
 </div>
 
+sqn experiments on gym env 'LunarLander-v2':
 
+<div>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander1.png" width="350" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander2.png" width="350" style="display:inline"/>
+</div>
 
 
 ### Awesome-DRL-Papers
