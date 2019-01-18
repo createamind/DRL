@@ -34,8 +34,8 @@ ddgp vs sac1
 sqn experiments on gym env 'LunarLander-v2':
 
 <div>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander1.png" width="450" style="display:inline"/>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander2.png" width="250" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander1.png" width="440" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander2.png" width="260" style="display:inline"/>
 </div>
 
 

@@ -248,11 +248,11 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
-    def test_agent(n=1):  # n: number of tests
+    def test_agent(n=20):  # n: number of tests
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
-            while not(d or (ep_len == 1000)):  # max_ep_len
+            while not(d or (ep_len == max_ep_len)):  # max_ep_len
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
@@ -278,8 +278,8 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         from a uniform distribution for better exploration. Afterwards, 
         use the learned policy. 
         """
-        if t > start_steps and 100*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
-        # if t > start_steps:
+        # if t > start_steps and 100*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
+        if t > start_steps:
             a = get_action(o)
         else:
             a = env.action_space.sample()
@@ -373,22 +373,22 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLander-v2')  # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='CartPole-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
-    parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=0.01, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--alpha', default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='debugnew_LunarLander-v2_alpha0.01_100x100')
+    parser.add_argument('--exp_name', type=str, default='CartPole-v0_g0.8_no_2.0_400x300')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[100,100]),
+        #ac_kwargs=dict(hidden_sizes=[100]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
