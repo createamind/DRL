@@ -3,17 +3,15 @@ import tensorflow as tf
 from numbers import Number
 import gym
 import time
-from spinup.algos.sqn_rpf import core
-from spinup.algos.sqn_rpf.core import get_vars
+from spinup.algos.sqn import core
+from spinup.algos.sqn.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
-
 
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
-
 
 
 
@@ -54,10 +52,13 @@ Soft Actor-Critic
 (With slight variations that bring it closer to TD3)
 
 """
-def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+
+""" make sure: max_ep_len < steps_per_epoch """
+
+def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
-        max_ep_len=1000, logger_kwargs=dict(), save_freq=1, ensemble_size=10):
+        max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
     Args:
@@ -156,9 +157,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # Inputs to computation graph
     x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
-    # x_ph, x2_ph: shape(?,128)
-    # a_ph: shape(?,1)
-    # r_ph, d_ph: shape(?,)
+
 
     ######
     if alpha == 'auto':
@@ -172,16 +171,12 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
 
     # Main outputs from computation graph
-    with tf.variable_scope('random_head'):
-        head_index = tf.get_variable(name='random_int', shape=[], dtype=tf.int32)
-
     with tf.variable_scope('main'):
-        mu, pi, _, q1, _ = actor_critic(x_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
-        # _, _, logp_pi, _, _ = actor_critic(x2_ph, a_ph, alpha, **ac_kwargs)
+        mu, pi, _, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, alpha, **ac_kwargs)
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, logp_pi_, _, q1_pi_= actor_critic(x2_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
+        _, _, logp_pi_, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, alpha,  **ac_kwargs)
 
     # Experience buffer
     if isinstance(act_space, Box):
@@ -206,20 +201,17 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 ######
 
     # Min Double-Q:
-    #min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(q1_pi_ - alpha * logp_pi_)  ############################## alpha=0
-    q_backup = tf.expand_dims(r_ph, axis=-1) + gamma*(1-tf.expand_dims(d_ph, axis=-1))*v_backup
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi_)  ############################## alpha=0
+    q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
     # Soft actor-critic losses
-    # q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
-    # q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
-    # value_loss = q1_loss + q2_loss
-    q1_loss = tf.reduce_mean((q_backup - q1)**2,axis=0)
-    value_loss = q1_loss
-
+    q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
+    q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
+    value_loss = q1_loss + q2_loss
 
     # # Policy train op
     # # (has to be separate from value train op, because q1_pi appears in pi_loss)
@@ -231,20 +223,20 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     value_params = get_vars('main/q')
     #with tf.control_dependencies([train_pi_op]):
-    train_value_op = [value_optimizer.minimize(value_loss[i], var_list=value_params) for i in range(ensemble_size)]
+    train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
 
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)
-    with tf.control_dependencies(train_value_op):
+    with tf.control_dependencies([train_value_op]):
         target_update = tf.group([tf.assign(v_targ, polyak*v_targ + (1-polyak)*v_main)
-                                  for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])         # zip([1,2,3,4],['a','b']) = [(1,'a'),(2,'b')]
+                                  for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
 
     # All ops to call during one training step
     if isinstance(alpha, Number):
-        step_ops = [q1_loss, q1, logp_pi_, tf.identity(alpha),
+        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi_, tf.identity(alpha),
                 train_value_op, target_update]
     else:
-        step_ops = [q1_loss, q1, logp_pi_, alpha,
+        step_ops = [q1_loss, q2_loss, q1, q2, logp_pi_, alpha,
                 train_value_op, target_update, train_alpha_op]
 
     # Initializing targets to match main variables
@@ -257,33 +249,35 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
-                                outputs={'mu': mu, 'pi': pi, 'q1': q1})
+                                outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
-    def test_agent(n=3):  # number of tests
-        global sess, mu, pi, q1
+    def test_agent(n=10):  # n: number of tests
+        global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
-            o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
+            o = test_env.reset()                                           ##################### manual start
+            o, r, d, ep_ret, ep_len = test_env.step(1)[0], 0, False, 0, 0  #####################
+            # o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
             while not(d or (ep_len == max_ep_len)):  # max_ep_len
                 # Take deterministic actions at test time 
-                o, r, d, _ = test_env.step(get_action(o, deterministic=True))
+                # o, r, d, _ = test_env.step(get_action(o, True))
+                o, r, _, d = test_env.step(get_action(o, True))  ##################### done when a life is lost
+                d = d['ale.lives'] < 5                           #####################
+
                 ep_ret += r
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
-
-
     start_time = time.time()
-    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
-    # global active_head
-    # Select a head to interact with env.
-    # active_head = np.random.randint(ensemble_size)
-    # sess.run(tf.assign(head_index, active_head))
-    # t0 = time.time()
+
+    o = env.reset()                                                     ##################### manual start
+    o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0            #####################
+    # o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
 
 
     total_steps = steps_per_epoch * epochs
@@ -296,8 +290,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
         from a uniform distribution for better exploration. Afterwards, 
         use the learned policy. 
         """
-
-        # if t > start_steps and 20*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
+        # if t > start_steps and 100*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
         if t > start_steps:
             a = get_action(o)
         else:
@@ -307,8 +300,11 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
 
         # Step the env
-        o2, r, d, _ = env.step(a)
-        #print(a,o2)
+        # o2, r, d, _ = env.step(a)
+
+        o2, r, _, d = env.step(a)                     ##################### done when a life is lost
+        d = d['ale.lives'] < 5                        #####################
+
         ep_ret += r
         ep_len += 1
 
@@ -325,12 +321,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
         o = o2
 
         # End of episode. Training (ep_len times).
-        if d or (ep_len == max_ep_len):
-
-            # t_last = t0
-            # t0 = time.time()
-            # print('episode_time:', t0-t_last, 'ep_len:', ep_len)
-
+        if d or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
@@ -344,26 +335,24 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
                             }
-                # step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
+                # step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
-                logger.store(LossQ1=outs[0], Q1Vals=outs[1],
-                            LogPi=outs[2], Alpha=outs[3])
+                logger.store(LossQ1=outs[0], LossQ2=outs[1],
+                            Q1Vals=outs[2], Q2Vals=outs[3],
+                            LogPi=outs[4], Alpha=outs[5])
 
+            #if d:
             logger.store(EpRet=ep_ret, EpLen=ep_len)
 
-            # t_last = t0
-            # t0 = time.time()
-            # print('training_time:', t0-t_last, 'num_train/ep_len:', ep_len)
 
+            o = env.reset()                                              ##################### manual start
+            o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0     #####################
+            # o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
-            o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
-            # Select a head to interact with env.
-            # active_head = np.random.randint(ensemble_size)
-            # sess.run(tf.assign(head_index, active_head))
 
 
         # End of epoch wrap-up
-        if t > 0 and t % steps_per_epoch == 0:  # and ep_len < steps_per_epoch:
+        if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
             # Save model
@@ -383,12 +372,12 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha',average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=True) 
-            # logger.log_tabular('Q2Vals', with_min_and_max=True)
+            logger.log_tabular('Q2Vals', with_min_and_max=True) 
             # logger.log_tabular('VVals', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
             # logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
-            # logger.log_tabular('LossQ2', average_only=True)
+            logger.log_tabular('LossQ2', average_only=True)
             # logger.log_tabular('LossV', average_only=True)
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
@@ -396,22 +385,22 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='CartPole-v0')  # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='Breakout-ram-v4')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
-    parser.add_argument('--gamma', type=float, default=0.8)
+    parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
-    parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_rpf_CartPole-v0_100x100_10')
+    parser.add_argument('--exp_name', type=str, default='Breakout-ram-v4_g0.99_no_0.8_100x')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sqn_rpf(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[100,100]), ensemble_size=1,
+    sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+        ac_kwargs=dict(hidden_sizes=[100,]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)

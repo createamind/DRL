@@ -53,8 +53,8 @@ def mlp_ensemble_with_prior(x, hidden_sizes=(32,), ensemble_size=10, prior_scale
     for _ in range(ensemble_size):
         x_proxy = x
         for h in hidden_sizes[:-1]:
-            x_proxy = tf.layers.dense(x_proxy, units=h, activation=activation)
-        qs.append(tf.layers.dense(x_proxy, units=hidden_sizes[-1], activation=output_activation))
+            x_proxy = tf.layers.dense(x_proxy, units=h, activation=activation, kernel_initializer=tf.variance_scaling_initializer(2.0))
+        qs.append(tf.layers.dense(x_proxy, units=hidden_sizes[-1], activation=output_activation, kernel_initializer=tf.variance_scaling_initializer(2.0)))
 
     q_nets = tf.stack(qs, axis=2)
 
@@ -64,18 +64,19 @@ def mlp_ensemble_with_prior(x, hidden_sizes=(32,), ensemble_size=10, prior_scale
     return q_models
 
 
+
 """
 Policies
 """
 
-def softmax_policy(alpha, v_x, act_dim, ensemble_size):
+def softmax_policy(alpha, v_x, act_dim, random_index=0, ensemble_size=10):
 
-    # random_index = tf.random_uniform(minval=0, maxval=ensemble_size, shape=[], dtype=tf.int32)
-    tf.get_variable_scope()._name = ''
-    with tf.variable_scope('random_head', reuse=True):
-        random_index = tf.get_variable(name='random_int', shape=[], dtype=tf.int32)
+    # # random_index = tf.random_uniform(minval=0, maxval=ensemble_size, shape=[], dtype=tf.int32)
+    # tf.get_variable_scope()._name = ''
+    # with tf.variable_scope('random_head', reuse=True):
+    #     random_index = tf.get_variable(name='random_int', shape=[], dtype=tf.int32)
 
-    pi_log = tf.nn.log_softmax(v_x/alpha)                      # shape(?, 4, 10)
+    pi_log = tf.nn.log_softmax(v_x/alpha, axis=1)                      # shape(?, 4, 10)
     random_pi_log = tf.expand_dims(pi_log[...,random_index], axis=-1)    # shape(?, 4, 1)
     mu = tf.argmax(random_pi_log, axis=1)                      # shape(?, 1)
 
@@ -92,7 +93,27 @@ def softmax_policy(alpha, v_x, act_dim, ensemble_size):
     return mu, pi, logp_pi
 
 
+def softmax_policy1(alpha, v_x, act_dim, ensemble_size=10):
 
+    # random_index = tf.random_uniform(minval=0, maxval=ensemble_size, shape=[], dtype=tf.int32)
+    # tf.get_variable_scope()._name = ''
+    # with tf.variable_scope('random_head', reuse=True):
+    #     random_index = tf.get_variable(name='random_int', shape=[], dtype=tf.int32)
+
+    pi_log = tf.nn.log_softmax(v_x/alpha, axis=1)                      # shape(?, 4, 10)
+    mu = tf.argmax(pi_log, axis=1)                      # shape(?, 10)
+
+    # tf.random.multinomial( logits, num_samples, seed=None, name=None, output_dtype=None )
+    # logits: 2-D Tensor with shape [batch_size, num_classes]. Each slice [i, :] represents the unnormalized log-probabilities for all classes.
+    # num_samples: 0-D. Number of independent samples to draw for each row slice.
+    pi = tf.stack([tf.squeeze(tf.random.multinomial(pi_log[...,i], num_samples=1), axis=1) for i in range(ensemble_size)], axis=1)   # shape(?, 10)
+
+    # logp_pi = tf.reduce_sum(tf.one_hot(mu, depth=act_dim) * pi_log, axis=1)  # use max Q(s,a)
+    logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim, axis=1) * pi_log, axis=1)             # shape(?, 4, 1)*shape(?, 4, 10)---reduce_sum--> shape(?,10)
+    # logp_pi = tf.reduce_sum(tf.exp(pi_log)*pi_log, axis=1)                     # exact entropy
+
+    # mu, pi, logp_pi: shape(?,10)
+    return mu, pi, logp_pi
 
 """
 Actor-Critics
@@ -107,9 +128,9 @@ def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), ensemble_size=10, acti
     act_dim = action_space.n
     a_one_hot = tf.one_hot(a, depth=act_dim, axis=1)    # a: shape(?,1), # a_one_hot: shape(?,4,1)
 
-    #vfs
+    # vfs
     # vf_mlp = lambda x: mlp(x, list(hidden_sizes) + [act_dim], activation, None)
-    vf_mlp = lambda x: mlp_ensemble_with_prior(x, list(hidden_sizes) + [act_dim], ensemble_size=10, activation=activation, output_activation=output_activation)
+    vf_mlp = lambda x: mlp_ensemble_with_prior(x, list(hidden_sizes) + [act_dim], ensemble_size=ensemble_size, activation=activation, output_activation=output_activation)
 
 
     with tf.variable_scope('q1', reuse=tf.AUTO_REUSE):                                                # vf_mlp(x) for q1
@@ -118,7 +139,7 @@ def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), ensemble_size=10, acti
     with tf.variable_scope('q1', reuse=True):                                    # reuse vf_mlp(x) for q1_pi
         v_x= vf_mlp(x)                                     # shape(?, 4, 10)
         # policy
-        mu, pi, logp_pi = policy(alpha, v_x, act_dim, ensemble_size)
+        mu, pi, logp_pi = policy(alpha, v_x, act_dim, ensemble_size=ensemble_size)
         pi_one_hot = tf.one_hot(pi, depth=act_dim, axis=1) # shape(?, 4, 1)
 
         # q1_pi = tf.reduce_sum(v_x*mu_one_hot, axis=1)   # use max Q(s,a)
