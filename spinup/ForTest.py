@@ -53,4 +53,18 @@ for i in range(5):
     #print(sess.run(x),sess.run(y),sess.run(z))
     print(sess.run([a,x,y,z]))
 
-
+# for j in range(ep_len):
+#     for i in range(ensemble_size):
+#         batch = replay_buffer.sample_batch(batch_size)
+#         feed_dict = {x_ph: batch['obs1'],
+#                      x2_ph: batch['obs2'],
+#                      a_ph: batch['acts'],
+#                      r_ph: batch['rews'],
+#                      d_ph: batch['done'],
+#                     }
+#         # step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
+#         sess.run(train_value_op[i])
+#
+#     outs = sess.run(step_ops, feed_dict)
+#     logger.store(LossQ1=outs[0], Q1Vals=outs[1],
+#                 LogPi=outs[2], Alpha=outs[3])

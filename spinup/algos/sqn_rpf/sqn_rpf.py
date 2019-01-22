@@ -262,8 +262,8 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
                                 outputs={'mu': mu[0], 'pi': pi[0], 'q1': q1[0]})
 
-    def get_action(o, deterministic=False):
-        act_op = mu[0] if deterministic else pi[0]
+    def get_action(o, active_head=0, deterministic=False):
+        act_op = mu[active_head] if deterministic else pi[active_head]
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
     def test_agent(n=3):  # number of tests
@@ -282,10 +282,10 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
-    # global active_head
+
     # Select a head to interact with env.
-    # active_head = np.random.randint(ensemble_size)
-    # sess.run(tf.assign(head_index, active_head))
+    active_head = np.random.randint(ensemble_size)
+
     # t0 = time.time()
 
 
@@ -302,7 +302,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
         # if t > start_steps and 20*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
         if t > start_steps:
-            a = get_action(o)
+            a = get_action(o, active_head=active_head)
         else:
             a = env.action_space.sample()
 
@@ -361,8 +361,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
             # Select a head to interact with env.
-            # active_head = np.random.randint(ensemble_size)
-            # sess.run(tf.assign(head_index, active_head))
+            active_head = np.random.randint(ensemble_size)
 
 
         # End of epoch wrap-up
@@ -408,13 +407,13 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_rpf_CartPole-v0_100x100_10')
+    parser.add_argument('--exp_name', type=str, default='sqn_rpf_CartPole-v0_400x300_10')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn_rpf(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[100,100]), ensemble_size=10,
+        ac_kwargs=dict(hidden_sizes=[400,300]), ensemble_size=10,
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
