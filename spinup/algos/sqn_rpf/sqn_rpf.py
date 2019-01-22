@@ -209,15 +209,17 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     #min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(q1_pi_ - alpha * logp_pi_)  ############################## alpha=0
-    q_backup = tf.expand_dims(r_ph, axis=-1) + gamma*(1-tf.expand_dims(d_ph, axis=-1))*v_backup
-
+    # v_backup = tf.stop_gradient(q1_pi_ - alpha * logp_pi_)  ############################## alpha=0
+    v_backup = [tf.stop_gradient(q1_pi_[i] - alpha * logp_pi_[i]) for i in range(ensemble_size)]
+    # q_backup = tf.expand_dims(r_ph, axis=-1) + gamma*(1-tf.expand_dims(d_ph, axis=-1))*v_backup
+    # q_backup = r_ph + gamma * (1 - d_ph) * v_backup
+    q_backup = [r_ph + gamma * (1 - d_ph) * v_backup[i]  for i in range(ensemble_size)]
 
     # Soft actor-critic losses
     # q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
     # q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
     # value_loss = q1_loss + q2_loss
-    q1_loss = tf.reduce_mean((q_backup - q1)**2,axis=0)
+    q1_loss = [tf.reduce_mean((q_backup[i] - q1[i])**2, axis=0)  for i in range(ensemble_size)]
     value_loss = q1_loss
 
 
@@ -232,6 +234,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     value_params = get_vars('main/q')
     #with tf.control_dependencies([train_pi_op]):
     train_value_op = [value_optimizer.minimize(value_loss[i], var_list=value_params) for i in range(ensemble_size)]
+    # train_value_op = [value_optimizer.minimize(value_loss)]
 
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)
@@ -241,7 +244,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # All ops to call during one training step
     if isinstance(alpha, Number):
-        step_ops = [q1_loss, q1, logp_pi_, tf.identity(alpha),
+        step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha),
                 train_value_op, target_update]
     else:
         step_ops = [q1_loss, q1, logp_pi_, alpha,
@@ -257,10 +260,10 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph}, 
-                                outputs={'mu': mu, 'pi': pi, 'q1': q1})
+                                outputs={'mu': mu[0], 'pi': pi[0], 'q1': q1[0]})
 
     def get_action(o, deterministic=False):
-        act_op = mu if deterministic else pi
+        act_op = mu[0] if deterministic else pi[0]
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
     def test_agent(n=3):  # number of tests
@@ -412,6 +415,6 @@ if __name__ == '__main__':
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn_rpf(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[100,100]), ensemble_size=1,
+        ac_kwargs=dict(hidden_sizes=[100,100]), ensemble_size=10,
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)

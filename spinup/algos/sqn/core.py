@@ -45,8 +45,8 @@ Policies
 
 def softmax_policy(alpha, v_x, act_dim):
 
-    pi_log = tf.nn.log_softmax(v_x/alpha)
-    mu = tf.argmax(pi_log, 1)
+    pi_log = tf.nn.log_softmax(v_x/alpha, axis=1)
+    mu = tf.argmax(pi_log, axis=1)
 
     # tf.random.multinomial( logits, num_samples, seed=None, name=None, output_dtype=None )
     # logits: 2-D Tensor with shape [batch_size, num_classes]. Each slice [i, :] represents the unnormalized log-probabilities for all classes.
@@ -68,14 +68,14 @@ Actor-Critics
 def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), activation=tf.nn.relu,
                      output_activation=None, policy=softmax_policy, action_space=None):
 
-    if x.shape[1] == 128:
-        x = (x - 128.0) / 128.0  # for Breakout-ram-v4
+    if x.shape[1] == 128:                # for Breakout-ram-v4
+        x = (x - 128.0) / 128.0          # x: shape(?,128)
 
     act_dim = action_space.n
-    a_one_hot = tf.one_hot(a[...,0], depth=act_dim)
+    a_one_hot = tf.one_hot(a[...,0], depth=act_dim)      # shape(?,4)
 
     #vfs
-    vf_mlp = lambda x: mlp(x, list(hidden_sizes) + [act_dim], activation, None)
+    vf_mlp = lambda x: mlp(x, list(hidden_sizes) + [act_dim], activation, None)     # return: shape(?,4)
 
     with tf.variable_scope('q1'):
         q1 = tf.reduce_sum(vf_mlp(x)*a_one_hot, axis=1)
@@ -96,6 +96,7 @@ def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), activation=tf.nn.relu,
         # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
         q2_pi = tf.reduce_sum(vf_mlp(x) * pi_one_hot, axis=1)
 
+    # shape(?,)
     return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi
 
 
