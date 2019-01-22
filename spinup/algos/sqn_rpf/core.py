@@ -116,15 +116,15 @@ def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), ensemble_size=10, acti
     vf_mlp = lambda x: mlp_ensemble_with_prior(x, list(hidden_sizes) + [act_dim], ensemble_size=ensemble_size, activation=activation, output_activation=output_activation)
 
     with tf.variable_scope('q1'):
-        vx1 = vf_mlp(x)
-        q1 = [tf.reduce_sum(vx1[i]*a_one_hot, axis=1) for i in range(ensemble_size)]
+        vx1_a = vf_mlp(x)
+        q1 = [tf.reduce_sum(vx1_a[i]*a_one_hot, axis=1) for i in range(ensemble_size)]
 
     with tf.variable_scope('q1', reuse=True):
-        vx2= vf_mlp(x)
+        vx1_b= vf_mlp(x)
         # policy
         mu, pi, logp_pi = [], [], []
         for i in range(ensemble_size):
-            mu_pi_logpi = policy(alpha, vx2[i], act_dim)
+            mu_pi_logpi = policy(alpha, vx1_b[i], act_dim)
             mu.append(mu_pi_logpi[0])
             pi.append(mu_pi_logpi[1])
             logp_pi.append(mu_pi_logpi[2])
@@ -133,16 +133,18 @@ def mlp_actor_critic(x, a, alpha, hidden_sizes=(400,300), ensemble_size=10, acti
         pi_one_hot = [tf.one_hot(pi[i], depth=act_dim) for i in range(ensemble_size)]
 
         # q1_pi = tf.reduce_sum(v_x*mu_one_hot, axis=1)   # use max Q(s,a)
-        q1_pi = [tf.reduce_sum(vx2[i] * pi_one_hot[i], axis=1) for i in range(ensemble_size)]
+        q1_pi = [tf.reduce_sum(vx1_b[i] * pi_one_hot[i], axis=1) for i in range(ensemble_size)]
 
-    # with tf.variable_scope('q2'):
-    #     q2 = tf.reduce_sum(vf_mlp(x)*a_one_hot, axis=1)
-    # with tf.variable_scope('q2', reuse=True):
-    #     # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
-    #     q2_pi = tf.reduce_sum(vf_mlp(x) * pi_one_hot, axis=1)
+    with tf.variable_scope('q2'):
+        vx2_a = vf_mlp(x)
+        q2 = [tf.reduce_sum(vx2_a[i]*a_one_hot, axis=1) for i in range(ensemble_size)]
+    with tf.variable_scope('q2', reuse=True):
+        vx2_b = vf_mlp(x)
+        # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
+        q2_pi = [tf.reduce_sum(vx2_b[i] * pi_one_hot[i], axis=1) for i in range(ensemble_size)]
 
-    # shape(?,)
-    return mu, pi, logp_pi, q1, q1_pi
+    # 10 x shape(?,)
+    return mu, pi, logp_pi, q1, q1_pi, q2, q2_pi
 
 
 

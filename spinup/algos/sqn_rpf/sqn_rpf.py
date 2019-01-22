@@ -176,12 +176,12 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
         head_index = tf.get_variable(name='random_int', shape=[], dtype=tf.int32)
 
     with tf.variable_scope('main'):
-        mu, pi, _, q1, _ = actor_critic(x_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
+        mu, pi, _, q1, _, q2, _ = actor_critic(x_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
         # _, _, logp_pi, _, _ = actor_critic(x2_ph, a_ph, alpha, **ac_kwargs)
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, logp_pi_, _, q1_pi_= actor_critic(x2_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
+        _, _, logp_pi_, _, q1_pi_, _, q2_pi_= actor_critic(x2_ph, a_ph, alpha, ensemble_size=ensemble_size, **ac_kwargs)
 
     # Experience buffer
     if isinstance(act_space, Box):
@@ -206,11 +206,11 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 ######
 
     # Min Double-Q:
-    #min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    min_q_pi = [tf.minimum(q1_pi_[i], q2_pi_[i]) for i in range(ensemble_size)]
 
     # Targets for Q and V regression
     # v_backup = tf.stop_gradient(q1_pi_ - alpha * logp_pi_)  ############################## alpha=0
-    v_backup = [tf.stop_gradient(q1_pi_[i] - alpha * logp_pi_[i]) for i in range(ensemble_size)]
+    v_backup = [tf.stop_gradient(min_q_pi[i] - alpha * logp_pi_[i]) for i in range(ensemble_size)]
     # q_backup = tf.expand_dims(r_ph, axis=-1) + gamma*(1-tf.expand_dims(d_ph, axis=-1))*v_backup
     # q_backup = r_ph + gamma * (1 - d_ph) * v_backup
     q_backup = [r_ph + gamma * (1 - d_ph) * v_backup[i]  for i in range(ensemble_size)]
@@ -219,8 +219,9 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     # q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
     # q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
     # value_loss = q1_loss + q2_loss
-    q1_loss = [tf.reduce_mean((q_backup[i] - q1[i])**2, axis=0)  for i in range(ensemble_size)]
-    value_loss = q1_loss
+    q1_loss = [0.5 * tf.reduce_mean((q_backup[i] - q1[i])**2, axis=0) for i in range(ensemble_size)]
+    q2_loss = [0.5 * tf.reduce_mean((q_backup[i] - q2[i])**2, axis=0) for i in range(ensemble_size)]
+    value_loss = [q1_loss[i] + q2_loss[i] for i in range(ensemble_size)]
 
 
     # # Policy train op
@@ -244,8 +245,8 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
 
     # All ops to call during one training step
     if isinstance(alpha, Number):
-        step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha),
-                train_value_op, target_update]
+        step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), train_value_op, target_update]
+        # step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), target_update]
     else:
         step_ops = [q1_loss, q1, logp_pi_, alpha,
                 train_value_op, target_update, train_alpha_op]
@@ -348,6 +349,20 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
                              d_ph: batch['done'],
                             }
                 # step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
+
+
+                # for i in range(ensemble_size):
+                #     batch = replay_buffer.sample_batch(batch_size)
+                #     feed_dict = {x_ph: batch['obs1'],
+                #                  x2_ph: batch['obs2'],
+                #                  a_ph: batch['acts'],
+                #                  r_ph: batch['rews'],
+                #                  d_ph: batch['done'],
+                #                 }
+                #     # step_ops = [q1_loss, q1, logp_pi_, alpha, target_update, train_alpha_op]
+                #     sess.run(train_value_op[i], feed_dict)
+                #     #print(i)
+
                 outs = sess.run(step_ops, feed_dict)
                 logger.store(LossQ1=outs[0], Q1Vals=outs[1],
                             LogPi=outs[2], Alpha=outs[3])
@@ -362,7 +377,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
             # Select a head to interact with env.
             active_head = np.random.randint(ensemble_size)
-
+            # print(active_head)
 
         # End of epoch wrap-up
         if t > 0 and t % steps_per_epoch == 0:  # and ep_len < steps_per_epoch:
@@ -405,15 +420,16 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
     parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', type=float, default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--ensemble_size', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_rpf_CartPole-v0_400x300_10')
+    parser.add_argument('--exp_name', type=str, default='sqn_rpf_test')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sqn_rpf(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[400,300]), ensemble_size=10,
+        ac_kwargs=dict(hidden_sizes=[400,300]), ensemble_size=args.ensemble_size,
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
