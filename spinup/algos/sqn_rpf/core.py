@@ -53,8 +53,8 @@ def mlp_ensemble_with_prior(x, hidden_sizes=(32,), ensemble_size=10, prior_scale
     for _ in range(ensemble_size):
         x_proxy = x
         for h in hidden_sizes[:-1]:
-            x_proxy = tf.layers.dense(x_proxy, units=h, activation=activation)
-        priors.append(tf.stop_gradient(tf.layers.dense(x_proxy, units=hidden_sizes[-1], activation=output_activation)))      # outputs: 10 x shape(?, 4)
+            x_proxy = tf.layers.dense(x_proxy, units=h, activation=activation, kernel_initializer=tf.variance_scaling_initializer(2.0))
+        priors.append(tf.stop_gradient(tf.layers.dense(x_proxy, units=hidden_sizes[-1], activation=output_activation, kernel_initializer=tf.variance_scaling_initializer(2.0))))      # outputs: 10 x shape(?, 4)
 
     prior_nets = priors                             # 10 x shape(?, 4)
 

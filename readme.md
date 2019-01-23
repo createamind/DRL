@@ -38,6 +38,12 @@ sqn experiments on gym env 'LunarLander-v2':
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/LunarLander2.png" width="260" style="display:inline"/>
 </div>
 
+try trained model on env 'Breakout-ram-v4':
+
+$ python -m spinup.run test_policy .saved_models/Breakout-ram-v4 -d -l 20000
+
+more experiments: https://mp.weixin.qq.com/s/-ZWj-uw5wWWhGy3B08Xk3Q
+
 
 ### Awesome-DRL-Papers
 INFOBOT: TRANSFER AND EXPLORATION VIA THE INFORMATION BOTTLENECK

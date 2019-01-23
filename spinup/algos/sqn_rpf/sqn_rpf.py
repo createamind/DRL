@@ -159,6 +159,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     # x_ph, x2_ph: shape(?,128)
     # a_ph: shape(?,1)
     # r_ph, d_ph: shape(?,)
+    all_ph = [x_ph, a_ph, x2_ph, r_ph, d_ph]
 
     ######
     if alpha == 'auto':
@@ -248,8 +249,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
         step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), train_value_op, target_update]
         # step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), target_update]
     else:
-        step_ops = [q1_loss, q1, logp_pi_, alpha,
-                train_value_op, target_update, train_alpha_op]
+        step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
 
     # Initializing targets to match main variables
     target_init = tf.group([tf.assign(v_targ, v_main)
@@ -360,6 +360,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
                 #                  d_ph: batch['done'],
                 #                 }
                 #     # step_ops = [q1_loss, q1, logp_pi_, alpha, target_update, train_alpha_op]
+                #     q_values = sess.make_callable(train_value_op, [o_tm1])
                 #     sess.run(train_value_op[i], feed_dict)
                 #     #print(i)
 
