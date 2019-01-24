@@ -159,7 +159,7 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
     # x_ph, x2_ph: shape(?,128)
     # a_ph: shape(?,1)
     # r_ph, d_ph: shape(?,)
-    all_ph = [x_ph, a_ph, x2_ph, r_ph, d_ph]
+
 
     ######
     if alpha == 'auto':
@@ -244,10 +244,14 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
         target_update = tf.group([tf.assign(v_targ, polyak*v_targ + (1-polyak)*v_main)
                                   for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])         # zip([1,2,3,4],['a','b']) = [(1,'a'),(2,'b')]
 
+    target_update_1 = tf.group([tf.assign(v_targ, polyak*v_targ + (1-polyak)*v_main)
+                                  for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])         # zip([1,2,3,4],['a','b']) = [(1,'a'),(2,'b')]
+    step_ops_1 = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), target_update_1]
+
+
     # All ops to call during one training step
     if isinstance(alpha, Number):
         step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), train_value_op, target_update]
-        # step_ops = [q1_loss[0], q1[0], logp_pi_[0], tf.identity(alpha), target_update]
     else:
         step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
 
@@ -341,30 +345,36 @@ def sqn_rpf(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0
             original paper.
             """
             for j in range(ep_len):
-                batch = replay_buffer.sample_batch(batch_size)
-                feed_dict = {x_ph: batch['obs1'],
-                             x2_ph: batch['obs2'],
-                             a_ph: batch['acts'],
-                             r_ph: batch['rews'],
-                             d_ph: batch['done'],
-                            }
-                # step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
+
+                if False:
+                    ########## scheme 0 ############
+                    batch = replay_buffer.sample_batch(batch_size)
+                    feed_dict = {x_ph: batch['obs1'],
+                                 x2_ph: batch['obs2'],
+                                 a_ph: batch['acts'],
+                                 r_ph: batch['rews'],
+                                 d_ph: batch['done'],
+                                }
+                    # step_ops = [q1_loss, q1, logp_pi_, alpha, train_value_op, target_update, train_alpha_op]
+                    outs = sess.run(step_ops, feed_dict)
+                    ###############################
+
+                else:
+                    ########## scheme 1 ############
+                    for i in range(ensemble_size):
+                        batch = replay_buffer.sample_batch(batch_size)
+                        feed_dict = {x_ph: batch['obs1'],
+                                     x2_ph: batch['obs2'],
+                                     a_ph: batch['acts'],
+                                     r_ph: batch['rews'],
+                                     d_ph: batch['done'],
+                                    }
+                        sess.run(train_value_op[i], feed_dict)
+                    # step_ops_1 = [q1_loss, q1, logp_pi_, alpha, target_update, train_alpha_op]
+                    outs = sess.run(step_ops_1, feed_dict)
+                    ###############################
 
 
-                # for i in range(ensemble_size):
-                #     batch = replay_buffer.sample_batch(batch_size)
-                #     feed_dict = {x_ph: batch['obs1'],
-                #                  x2_ph: batch['obs2'],
-                #                  a_ph: batch['acts'],
-                #                  r_ph: batch['rews'],
-                #                  d_ph: batch['done'],
-                #                 }
-                #     # step_ops = [q1_loss, q1, logp_pi_, alpha, target_update, train_alpha_op]
-                #     q_values = sess.make_callable(train_value_op, [o_tm1])
-                #     sess.run(train_value_op[i], feed_dict)
-                #     #print(i)
-
-                outs = sess.run(step_ops, feed_dict)
                 logger.store(LossQ1=outs[0], Q1Vals=outs[1],
                             LogPi=outs[2], Alpha=outs[3])
 
@@ -422,9 +432,9 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=5000)
     parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', type=float, default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--ensemble_size', type=int, default=10)
+    parser.add_argument('--ensemble_size', type=int, default=2)
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--exp_name', type=str, default='sqn_rpf_test')
+    parser.add_argument('--exp_name', type=str, default='sqn_rpf_test2')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
