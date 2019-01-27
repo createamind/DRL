@@ -5,6 +5,11 @@
 
 https://github.com/openai/spinningup
 
+$ cd DRL
+$ pip install -e .
+$ pip install ~/carla/PythonClient (optional)
+$ pip install opencv-python
+
 
 references:
 
