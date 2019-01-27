@@ -25,7 +25,7 @@ except Exception:
 import gym
 from gym.spaces import Box, Discrete, Tuple
 
-from scenarios import DEFAULT_SCENARIO, LANE_KEEP, TOWN2_ALL, TOWN2_ONE_CURVE
+from .scenarios import DEFAULT_SCENARIO, LANE_KEEP, TOWN2_ALL, TOWN2_ONE_CURVE
 
 # Set this where you want to save image outputs (or empty string to disable)
 CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/carla_out"))
@@ -80,8 +80,8 @@ GROUND_Z = 22
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": True,  # log images in _read_observation().
-    "convert_images_to_video": True,
-    "verbose": True,    # print measurement information, write out measurement json file.
+    "convert_images_to_video": True,  # convert log_images to videos.
+    "verbose": True,    # print measurement information; write out measurement json file.
 
     "enable_planner": True,
     "framestack": 2,  # note: only [1, 2] currently supported
@@ -94,7 +94,7 @@ ENV_CONFIG = {
     "server_map": "/Game/Maps/Town02",
     "scenarios": [DEFAULT_SCENARIO], # TOWN2_ONE_CURVE, # TOWN2_ALL, # [LANE_KEEP], #
     "use_depth_camera": False,  # use depth instead of rgb.
-    "discrete_actions": True,
+    "discrete_actions": False,
     "squash_action_logits": False,
 }
 
