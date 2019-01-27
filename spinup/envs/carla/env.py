@@ -81,7 +81,7 @@ GROUND_Z = 22
 ENV_CONFIG = {
     "log_images": True,  # log images in _read_observation().
     "convert_images_to_video": True,  # convert log_images to videos.
-    "verbose": True,    # print measurement information; write out measurement json file.
+    "verbose": False,    # print measurement information; write out measurement json file.
 
     "enable_planner": True,
     "framestack": 2,  # note: only [1, 2] currently supported
@@ -319,10 +319,11 @@ class CarlaEnv(gym.Env):
             prev_image = image
         if self.config["framestack"] == 2:
             image = np.concatenate([prev_image, image], axis=2)
-        obs = (image, COMMAND_ORDINAL[py_measurements["next_command"]], [
-            py_measurements["forward_speed"],
-            py_measurements["distance_to_goal"]
-        ])
+        # obs = (image, COMMAND_ORDINAL[py_measurements["next_command"]], [
+        #     py_measurements["forward_speed"],
+        #     py_measurements["distance_to_goal"]
+        # ])
+        obs = image
         self.last_obs = obs
         return obs
 

@@ -14,9 +14,9 @@ class ReplayBuffer:
     """
 
     def __init__(self, obs_dim, act_dim, size):
-        self.obs1_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.obs2_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.acts_buf = np.zeros([size, act_dim], dtype=np.float32)
+        self.obs1_buf = np.zeros([size,]+obs_dim, dtype=np.float32)
+        self.obs2_buf = np.zeros([size,]+obs_dim, dtype=np.float32)
+        self.acts_buf = np.zeros([size,]+act_dim, dtype=np.float32)
         self.rews_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
@@ -46,7 +46,7 @@ Soft Actor-Critic
 
 """
 def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
+        steps_per_epoch=5000, epochs=100, replay_size=int(1e5), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -135,8 +135,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     np.random.seed(seed)
 
     env, test_env = env_fn(), env_fn()
-    # obs_dim = env.observation_space.shape[0]
-    # act_dim = env.action_space.shape[0]
+
     obs_space = env.observation_space.spaces[0]
     act_space = env.action_space
     obs_dim = obs_space.shape
@@ -148,8 +147,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
-    # Inputs to computation graph
-    # x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders(obs_dim, act_dim, obs_dim, None, None)
+
     # Inputs to computation graph
     x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
 
@@ -162,12 +160,12 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         _, _, logp_pi_, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, a_ph, **ac_kwargs)
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
+    replay_buffer = ReplayBuffer(obs_dim=list(obs_dim), act_dim=list(act_dim), size=replay_size)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in 
-                       ['main/pi', 'main/q1', 'main/q2', 'main'])
-    print(('\nNumber of parameters: \t pi: %d, \t' + \
+                       ['main/cnn_layer', 'main/pi', 'main/q1', 'main/q2', 'main'])
+    print(('\nNumber of parameters: \t cnn_layer: %d, \t pi: %d, \t' + \
            'q1: %d, \t q2: %d, \t total: %d\n')%var_counts)
 
 ######
@@ -197,17 +195,19 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
     value_loss = q1_loss + q2_loss
 
+    cnn_params = get_vars('main/cnn_layer')
     # Policy train op 
     # (has to be separate from value train op, because q1_pi appears in pi_loss)
     pi_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    train_pi_op = pi_optimizer.minimize(pi_loss, var_list=get_vars('main/pi'))
+    pi_params = get_vars('main/pi')
+    train_pi_op = pi_optimizer.minimize(pi_loss, var_list = cnn_params + pi_params)
 
     # Value train op
     # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     value_params = get_vars('main/q')
     with tf.control_dependencies([train_pi_op]):
-        train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
+        train_value_op = value_optimizer.minimize(value_loss, var_list = cnn_params + value_params)
 
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)

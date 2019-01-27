@@ -30,6 +30,15 @@ def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
         x = tf.layers.dense(x, units=h, activation=activation)
     return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
 
+def cnn_layer(x):
+    x = tf.reshape(x, [-1, 80, 80, 6])
+    x = tf.nn.relu(tf.layers.conv2d(x, 16, [4, 4], strides=(2, 2), padding='SAME'))
+    x = tf.nn.relu(tf.layers.conv2d(x, 32, [4, 4], strides=(2, 2), padding='SAME'))
+    x = tf.nn.relu(tf.layers.conv2d(x, 64, [4, 4], strides=(2, 2), padding='SAME'))
+    x = tf.nn.relu(tf.layers.conv2d(x, 128, [4, 4], strides=(2, 2), padding='SAME'))
+    x = tf.reshape(x, [-1, 3200])
+    return tf.layers.dense(x, 200)
+
 def get_vars(scope):
     return [x for x in tf.global_variables() if scope in x.name]
 
@@ -99,6 +108,11 @@ Actor-Critics
 """
 def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu, 
                      output_activation=None, policy=mlp_gaussian_policy, action_space=None):
+
+    # cnn_layer
+    with tf.variable_scope('cnn_layer'):
+        x = cnn_layer(x)
+
     # policy
     with tf.variable_scope('pi'):
         mu, pi, logp_pi = policy(x, a, hidden_sizes, activation, output_activation)
