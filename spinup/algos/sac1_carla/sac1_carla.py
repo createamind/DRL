@@ -238,7 +238,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
-        return sess.run(act_op, feed_dict={x_ph: o.reshape(1,-1)})[0]
+        return sess.run(act_op, feed_dict={x_ph: o[np.newaxis,...]})[0]
 
     def test_agent(n=10):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=5000)
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_carla')
+    parser.add_argument('--exp_name', type=str, default='sac1_carla_400x300')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -363,6 +363,6 @@ if __name__ == '__main__':
     env_fn = make_carla if args.env=='Carla-v0' else lambda : gym.make(args.env)
 
     sac1_carla(env_fn, actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[100,]),
+        ac_kwargs=dict(hidden_sizes=[400,300]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, steps_per_epoch=args.steps_per_epoch, alpha=args.alpha,
         logger_kwargs=logger_kwargs)
