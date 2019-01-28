@@ -177,7 +177,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     if alpha == 'auto':
         target_entropy = (-np.prod(env.action_space.shape))
 
-        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float16, initializer=0.0)
+        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float32, initializer=0.0)
         alpha = tf.exp(log_alpha)
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
@@ -357,7 +357,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=5000)
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_carla_400x300_0.2')
+    parser.add_argument('--exp_name', type=str, default='sac1_carla_400x300_0.2_h0')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
