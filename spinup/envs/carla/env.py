@@ -80,7 +80,7 @@ GROUND_Z = 22
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": False,  # log images in _read_observation().
-    "convert_images_to_video": False,  # convert log_images to videos.
+    "convert_images_to_video": False,  # convert log_images to videos. when "verbose" is True.
     "verbose": False,    # print measurement information; write out measurement json file.
 
     "enable_planner": True,
@@ -280,6 +280,7 @@ class CarlaEnv(gym.Env):
         camera2.set_image_size(self.config["render_x_res"],
                                self.config["render_y_res"])
         # camera2.set_position(30, 0, 130)
+        # camera2.set_position(0.3, 0.0, 1.3)
         camera2.set_position(2.0, 0.0, 1.4)
         camera2.set_rotation(0.0, 0.0, 0.0)
 
@@ -698,7 +699,7 @@ if __name__ == "__main__":
             if ENV_CONFIG["discrete_actions"]:
                 obs, reward, done, info = env.step(3)
             else:
-                obs, reward, done, info = env.step([1, 1, 0])
+                obs, reward, done, info = env.step([1, 1])
             total_reward += reward
             print(i, "rew", reward, "total", total_reward, "done", done)
         print("{} fps".format(i / (time.time() - start)))
