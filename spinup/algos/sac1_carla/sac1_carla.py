@@ -8,17 +8,22 @@ from spinup.algos.sac1_carla.core import get_vars
 from spinup.utils.logx import EpochLogger
 
 
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.Session(config=config)
+
+
 class ReplayBuffer:
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
 
     def __init__(self, obs_dim, act_dim, size):
-        self.obs1_buf = np.zeros([size,]+obs_dim, dtype=np.float32)
-        self.obs2_buf = np.zeros([size,]+obs_dim, dtype=np.float32)
-        self.acts_buf = np.zeros([size,]+act_dim, dtype=np.float32)
-        self.rews_buf = np.zeros(size, dtype=np.float32)
-        self.done_buf = np.zeros(size, dtype=np.float32)
+        self.obs1_buf = np.zeros([size,]+obs_dim, dtype=np.float16)
+        self.obs2_buf = np.zeros([size,]+obs_dim, dtype=np.float16)
+        self.acts_buf = np.zeros([size,]+act_dim, dtype=np.float16)
+        self.rews_buf = np.zeros(size, dtype=np.float16)
+        self.done_buf = np.zeros(size, dtype=np.float16)
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, obs, act, rew, next_obs, done):
@@ -172,7 +177,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     if alpha == 'auto':
         target_entropy = (-np.prod(env.action_space.shape))
 
-        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float32, initializer=0.0)
+        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float16, initializer=0.0)
         alpha = tf.exp(log_alpha)
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
