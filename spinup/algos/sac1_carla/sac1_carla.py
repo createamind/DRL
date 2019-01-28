@@ -245,7 +245,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: o[np.newaxis,...]})[0]
 
-    def test_agent(n=10):
+    def test_agent(n=3):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -357,7 +357,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=5000)
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_carla_400x300')
+    parser.add_argument('--exp_name', type=str, default='sac1_carla_400x300_0.2')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs

@@ -79,8 +79,8 @@ GROUND_Z = 22
 
 # Default environment configuration
 ENV_CONFIG = {
-    "log_images": True,  # log images in _read_observation().
-    "convert_images_to_video": True,  # convert log_images to videos.
+    "log_images": False,  # log images in _read_observation().
+    "convert_images_to_video": False,  # convert log_images to videos.
     "verbose": False,    # print measurement information; write out measurement json file.
 
     "enable_planner": True,
@@ -92,7 +92,7 @@ ENV_CONFIG = {
     "x_res": 80,  # cv2.resize()
     "y_res": 80,  # cv2.resize()
     "server_map": "/Game/Maps/Town02",
-    "scenarios": [LANE_KEEP], # [DEFAULT_SCENARIO], # TOWN2_ONE_CURVE, # TOWN2_ALL, #
+    "scenarios": TOWN2_ONE_CURVE, # [DEFAULT_SCENARIO], #  [LANE_KEEP], #   TOWN2_ALL, #
     "use_depth_camera": False,  # use depth instead of rgb.
     "discrete_actions": False,
     "squash_action_logits": False,
