@@ -51,7 +51,7 @@ Soft Actor-Critic
 
 """
 def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(1e5), gamma=0.99,
+        steps_per_epoch=5000, epochs=100, replay_size=int(3e5), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -271,7 +271,8 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         if t > start_steps:
             a = get_action(o)
         else:
-            a = env.action_space.sample()
+            a = [0.35, 0]
+            # a = env.action_space.sample()
 
         # Step the env
         o2, r, d, _ = env.step(a)
@@ -292,6 +293,7 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
         # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len):
+            print('EpRet: ',ep_ret, 'ep_len: ', ep_len)
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
@@ -356,8 +358,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=5000)
-    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--exp_name', type=str, default='sac1_carla_400x300_0.2_h0')
+    parser.add_argument('--alpha', default=0.5, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--exp_name', type=str, default='sac1_carla_200x100_test')
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -368,6 +370,6 @@ if __name__ == '__main__':
     env_fn = make_carla if args.env=='Carla-v0' else lambda : gym.make(args.env)
 
     sac1_carla(env_fn, actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[400,300]),
+        ac_kwargs=dict(hidden_sizes=[200,100]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, steps_per_epoch=args.steps_per_epoch, alpha=args.alpha,
         logger_kwargs=logger_kwargs)

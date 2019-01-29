@@ -104,13 +104,28 @@ TOWN2_STRAIGHT = [
     for (start, end) in POSES_TOWN2_STRAIGHT
 ]
 
+TOWN2_STRAIGHT_0 = [
+    build_scenario("Town02", start, end, 0, 0, 500, [0])
+    for (start, end) in POSES_TOWN2_STRAIGHT
+]
+
 TOWN2_STRAIGHT_DYNAMIC = [
     build_scenario("Town02", start, end, 20, 50, 300, TRAIN_WEATHERS)
     for (start, end) in POSES_TOWN2_STRAIGHT
 ]
 
+TOWN2_STRAIGHT_DYNAMIC_0 = [
+    build_scenario("Town02", start, end, 10, 20, 1000, [0])
+    for (start, end) in POSES_TOWN2_STRAIGHT
+]
+
 TOWN2_ONE_CURVE = [
     build_scenario("Town02", start, end, 0, 0, 600, TRAIN_WEATHERS)
+    for (start, end) in POSES_TOWN2_ONE_CURVE
+]
+
+TOWN2_ONE_CURVE_0 = [
+    build_scenario("Town02", start, end, 0, 0, 1000, [0])
     for (start, end) in POSES_TOWN2_ONE_CURVE
 ]
 

@@ -25,7 +25,7 @@ except Exception:
 import gym
 from gym.spaces import Box, Discrete, Tuple
 
-from .scenarios import DEFAULT_SCENARIO, LANE_KEEP, TOWN2_ALL, TOWN2_ONE_CURVE
+from .scenarios import DEFAULT_SCENARIO, LANE_KEEP, TOWN2_ALL, TOWN2_ONE_CURVE, TOWN2_ONE_CURVE_0, TOWN2_STRAIGHT_DYNAMIC_0, TOWN2_STRAIGHT_0
 
 # Set this where you want to save image outputs (or empty string to disable)
 CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/carla_out"))
@@ -83,16 +83,16 @@ ENV_CONFIG = {
     "convert_images_to_video": False,  # convert log_images to videos. when "verbose" is True.
     "verbose": False,    # print measurement information; write out measurement json file.
 
-    "enable_planner": True,
-    "framestack": 2,  # note: only [1, 2] currently supported
+    "enable_planner": False,
+    "framestack": 1,  # note: only [1, 2] currently supported
     "early_terminate_on_collision": True,
-    "reward_function": "custom",
+    "reward_function": "lane_keep",
     "render_x_res": 800,
     "render_y_res": 600,
     "x_res": 80,  # cv2.resize()
     "y_res": 80,  # cv2.resize()
     "server_map": "/Game/Maps/Town02",
-    "scenarios": [LANE_KEEP], # [DEFAULT_SCENARIO], # TOWN2_ONE_CURVE, #    TOWN2_ALL, #
+    "scenarios": TOWN2_STRAIGHT_0, # TOWN2_STRAIGHT_DYNAMIC_0, # TOWN2_ONE_CURVE_0, # [DEFAULT_SCENARIO], # [LANE_KEEP], #  TOWN2_ONE_CURVE, #    TOWN2_ALL, #
     "use_depth_camera": False,  # use depth instead of rgb.
     "discrete_actions": False,
     "squash_action_logits": False,
@@ -392,7 +392,7 @@ class CarlaEnv(gym.Env):
 
         # done or not
         done = (self.num_steps > self.scenario["max_steps"]
-                or py_measurements["next_command"] == "REACH_GOAL"
+                or py_measurements["next_command"] == "REACH_GOAL" or py_measurements["intersection_offroad"] or py_measurements["intersection_otherlane"]
                 or (self.config["early_terminate_on_collision"]
                     and collided_done(py_measurements)))
 
@@ -625,19 +625,19 @@ def compute_reward_lane_keep(env, prev, current):
     # Speed reward, up 30.0 (km/h)
     reward += np.clip(current["forward_speed"], 0.0, 30.0) / 10
 
-    # New collision damage
-    new_damage = (
-        current["collision_vehicles"] + current["collision_pedestrians"] +
-        current["collision_other"] - prev["collision_vehicles"] -
-        prev["collision_pedestrians"] - prev["collision_other"])
-    if new_damage:
-        reward -= 100.0
-
-    # Sidewalk intersection
-    reward -= current["intersection_offroad"]
-
-    # Opposite lane intersection
-    reward -= current["intersection_otherlane"]
+    # # New collision damage
+    # new_damage = (
+    #     current["collision_vehicles"] + current["collision_pedestrians"] +
+    #     current["collision_other"] - prev["collision_vehicles"] -
+    #     prev["collision_pedestrians"] - prev["collision_other"])
+    # if new_damage:
+    #     reward -= 100.0
+    #
+    # # Sidewalk intersection
+    # reward -= current["intersection_offroad"]
+    #
+    # # Opposite lane intersection
+    # reward -= current["intersection_otherlane"]
 
     return reward
 

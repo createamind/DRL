@@ -31,13 +31,21 @@ def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
     return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
 
 def cnn_layer(x):
-    x = tf.reshape(x, [-1, 80, 80, 6])
-    x = tf.nn.relu(tf.layers.conv2d(x, 16, [4, 4], strides=(2, 2), padding='SAME'))
-    x = tf.nn.relu(tf.layers.conv2d(x, 32, [4, 4], strides=(2, 2), padding='SAME'))
-    x = tf.nn.relu(tf.layers.conv2d(x, 64, [4, 4], strides=(2, 2), padding='SAME'))
-    x = tf.nn.relu(tf.layers.conv2d(x, 128, [4, 4], strides=(2, 2), padding='SAME'))
-    x = tf.reshape(x, [-1, 3200])
-    return tf.layers.dense(x, 200)
+    x = tf.reshape(x, [-1, 80, 80, 3])
+    x = tf.nn.relu(tf.layers.conv2d(x, 8, [4, 4], strides=(2, 2), padding='SAME',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-5),
+        kernel_initializer=tf.contrib.layers.xavier_initializer()))
+    x = tf.nn.relu(tf.layers.conv2d(x, 16, [4, 4], strides=(2, 2), padding='SAME',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-5),
+        kernel_initializer=tf.contrib.layers.xavier_initializer()))
+    x = tf.nn.relu(tf.layers.conv2d(x, 32, [4, 4], strides=(2, 2), padding='SAME',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-5),
+        kernel_initializer=tf.contrib.layers.xavier_initializer()))
+    x = tf.nn.relu(tf.layers.conv2d(x, 64, [4, 4], strides=(2, 2), padding='SAME',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-5),
+        kernel_initializer=tf.contrib.layers.xavier_initializer()))
+    x = tf.reshape(x, [-1, 1600])
+    return tf.layers.dense(x, 100)
 
 def get_vars(scope):
     return [x for x in tf.global_variables() if scope in x.name]
