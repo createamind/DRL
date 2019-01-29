@@ -105,7 +105,7 @@ TOWN2_STRAIGHT = [
 ]
 
 TOWN2_STRAIGHT_0 = [
-    build_scenario("Town02", start, end, 0, 0, 500, [0])
+    build_scenario("Town02", start, end, 0, 0, 1000, [0])
     for (start, end) in POSES_TOWN2_STRAIGHT
 ]
 

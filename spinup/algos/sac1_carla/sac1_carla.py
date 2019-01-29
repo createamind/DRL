@@ -245,11 +245,11 @@ def sac1_carla(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: o[np.newaxis,...]})[0]
 
-    def test_agent(n=3):
+    def test_agent(n=1):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
-            while not(d or (ep_len == max_ep_len)):
+            while not(d or (ep_len == 200)): # max_ep_len
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
@@ -358,7 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=5000)
-    parser.add_argument('--alpha', default=0.5, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--exp_name', type=str, default='sac1_carla_200x100_test')
     args = parser.parse_args()
 
