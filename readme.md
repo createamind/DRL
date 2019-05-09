@@ -53,6 +53,9 @@ More experiments: https://mp.weixin.qq.com/s/-ZWj-uw5wWWhGy3B08Xk3Q
 
 
 ### Awesome-DRL-Papers
+Learning Latent Dynamics for Planning from Pixels
+* https://arxiv.org/pdf/1811.04551.pdf
+
 INFOBOT: TRANSFER AND EXPLORATION VIA THE INFORMATION BOTTLENECK
 * code: to be released.
 
