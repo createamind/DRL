@@ -26,7 +26,7 @@ setup(
         'psutil',
         'scipy',
         'seaborn==0.8.1',
-        'tensorflow-gpu',
+        'tensorflow-gpu==1.12.0', #(for cuda 9)
         'tqdm'
     ],
     description="Teaching tools for introducing people to deep RL.",
