@@ -310,6 +310,10 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         done = d
         d = False
 
+        if done:
+            print('Total reward: ', ep_ret)
+
+
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d)
 
@@ -384,14 +388,16 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='football')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--use_wrapper', type=bool, default=True)
+    parser.add_argument('--with_checkpoints', type=bool, default=False)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
-    parser.add_argument('--gamma', type=float, default=0.99)
+    parser.add_argument('--gamma', type=float, default=0.995)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=30000)
     parser.add_argument('--max_ep_len', type=int, default=3000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--exp_name', type=str, default='debug')
     args = parser.parse_args()
@@ -400,7 +406,31 @@ if __name__ == '__main__':
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     env_football = football_env.create_environment( env_name='11_vs_11_stochastic', \
-                                                    with_checkpoints=True, representation='simple115', render=False)
+                                                    with_checkpoints=args.with_checkpoints, representation='simple115', render=False)
+    # reward wrapper
+    class FootballWrapper(object):
+
+        def __init__(self, env):
+            self._env = env
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def step(self, action):
+            obs, reward, done, info = self._env.step(action)
+            reward = reward + self.incentive(obs)
+            return obs, reward, done, info
+
+        def incentive(self, obs):
+            who_controls_ball = obs[7:9]
+            pos_ball = obs[0]
+            distance_to_goal =np.array([(pos_ball+1)/2.0, (pos_ball-1)/2.0])
+            r = np.dot(who_controls_ball,distance_to_goal)*0.001
+            return r
+
+    if args.use_wrapper:
+        env_football = FootballWrapper(env_football)
+
 
     sqn(lambda : env_football, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]),
