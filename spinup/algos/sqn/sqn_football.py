@@ -7,7 +7,7 @@ from spinup.algos.sqn import core
 from spinup.algos.sqn.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
-
+import gfootball.env as football_env
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -56,8 +56,8 @@ Soft Actor-Critic
 """ make sure: max_ep_len < steps_per_epoch """
 
 def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
-        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
+        steps_per_epoch=5000, epochs=100, replay_size=int(3e6), gamma=0.99,
+        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=1e5,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
@@ -145,7 +145,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
 
-    env, test_env = env_fn(), env_fn()
+    env, test_env = env_fn(), env_fn()  # football env and test_env are the same. multiple envs in one process are not supported.
     obs_dim = env.observation_space.shape[0]
     obs_space = env.observation_space
     act_dim = env.action_space.n
@@ -255,7 +255,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
-    def test_agent(n=10):  # n: number of tests
+    def test_agent(n=1):  # n: number of tests
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -291,11 +291,11 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         else:
             a = env.action_space.sample()
 
-        np.random.random()
 
 
         # Step the env
         o2, r, d, _ = env.step(a)
+
         #print(a,o2)
         # o2, r, _, d = env.step(a)                     #####################
         # d = d['ale.lives'] < 5                        #####################
@@ -306,7 +306,9 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
-        d = False if ep_len==max_ep_len else d
+        # d = False if ep_len==max_ep_len else d
+        done = d
+        d = False
 
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d)
@@ -316,7 +318,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         o = o2
 
         # End of episode. Training (ep_len times).
-        if d or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
+        if done or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
@@ -356,6 +358,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
             # Test the performance of the deterministic version of the agent.
             test_agent()
+            o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
@@ -380,14 +383,15 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='CartPole-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='football')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4 MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=5000)
-    parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=2.0, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--steps_per_epoch', type=int, default=30000)
+    parser.add_argument('--max_ep_len', type=int, default=3000)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--exp_name', type=str, default='debug')
     args = parser.parse_args()
@@ -395,7 +399,10 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sqn(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        #ac_kwargs=dict(hidden_sizes=[100]),
-        gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
+    env_football = football_env.create_environment( env_name='11_vs_11_stochastic', \
+                                                    with_checkpoints=True, representation='simple115', render=False)
+
+    sqn(lambda : env_football, actor_critic=core.mlp_actor_critic,
+        ac_kwargs=dict(hidden_sizes=[400,300]),
+        gamma=args.gamma, seed=args.seed, epochs=args.epochs, steps_per_epoch=args.steps_per_epoch, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
