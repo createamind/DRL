@@ -262,6 +262,12 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             while not(d or (ep_len == max_ep_len)):  # max_ep_len
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
+
+                if r < -0.5:
+                    d = True
+                else:
+                    d = False
+
                 ep_ret += r
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
@@ -307,8 +313,12 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
         # d = False if ep_len==max_ep_len else d
+
+        if r<-0.5:
+            d=True
+        else:
+            d=False
         done = d
-        d = False
 
         if done:
             print('Total reward: ', ep_ret)
