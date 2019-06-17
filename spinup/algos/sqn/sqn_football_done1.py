@@ -262,12 +262,6 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             while not(d or (ep_len == max_ep_len)):  # max_ep_len
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
-
-                if r < -0.5:
-                    d = True
-                else:
-                    d = False
-
                 ep_ret += r
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
@@ -313,11 +307,6 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
         # d = False if ep_len==max_ep_len else d
-
-        if r<-0.5:
-            d=True
-        else:
-            d=False
         done = d
 
         if done:
@@ -407,8 +396,8 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=30000)
     parser.add_argument('--max_ep_len', type=int, default=3000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--exp_name', type=str, default='debug')
     args = parser.parse_args()
 
@@ -429,10 +418,21 @@ if __name__ == '__main__':
 
         def step(self, action):
             obs, reward, done, info = self._env.step(action)
-            reward = reward + self.incentive(obs)
+            if reward != 0:
+                done = True
+            else:
+                done = False
+            # reward = reward + self.incentive1(obs)
             return obs, reward, done, info
 
-        def incentive(self, obs):
+        def incentive1(self, obs):
+            who_controls_ball = obs[7:9]
+            pos_ball = obs[0:2]
+            distance_to_goal =np.array([np.exp(-np.linalg.norm(pos_ball-[1.01,0])), -np.exp(-np.linalg.norm(pos_ball-[-1.01,0]))])
+            r = np.dot(who_controls_ball,distance_to_goal)*0.003
+            return r
+
+        def incentive2(self, obs):
             who_controls_ball = obs[7:9]
             pos_ball = obs[0]
             distance_to_goal =np.array([(pos_ball+1)/2.0, (pos_ball-1)/2.0])
@@ -444,6 +444,6 @@ if __name__ == '__main__':
 
 
     sqn(lambda : env_football, actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[400,300]),
+        ac_kwargs=dict(hidden_sizes=[400,300,200]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, steps_per_epoch=args.steps_per_epoch, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)

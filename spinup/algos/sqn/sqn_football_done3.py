@@ -262,12 +262,6 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             while not(d or (ep_len == max_ep_len)):  # max_ep_len
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
-
-                if r < -0.5:
-                    d = True
-                else:
-                    d = False
-
                 ep_ret += r
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
@@ -313,11 +307,6 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
         # d = False if ep_len==max_ep_len else d
-
-        if r<-0.5:
-            d=True
-        else:
-            d=False
         done = d
 
         if done:
@@ -427,16 +416,48 @@ if __name__ == '__main__':
         def __getattr__(self, name):
             return getattr(self._env, name)
 
+        def reset(self):
+            obs = self._env.reset()
+            self.pre_who_controls_ball = obs[7:9]
+            return obs
+
         def step(self, action):
             obs, reward, done, info = self._env.step(action)
-            reward = reward + self.incentive(obs)
+            control = obs[7:9]-self.pre_who_controls_ball
+            if obs[8] == 1 and obs[0]<-0.2:
+                reward = -1
+            if reward != 0 or (control[0]== -1 and control[1]== 1 and obs[0]<0.8):
+                done = True
+            else:
+                done = False
+            reward = reward + self.incentive1(obs)
+            self.pre_who_controls_ball = obs[7:9]
             return obs, reward, done, info
 
-        def incentive(self, obs):
+        def incentive1(self, obs):
+            who_controls_ball = obs[7:9]
+            pos_ball = obs[0:2]
+            distance_to_goal =np.array([np.exp(-np.linalg.norm(pos_ball-[1.01,0])), -np.exp(-np.linalg.norm(pos_ball-[-1.01,0]))])
+            r = np.dot(who_controls_ball,distance_to_goal)*0.003
+            return r
+
+        def incentive2(self, obs):
             who_controls_ball = obs[7:9]
             pos_ball = obs[0]
             distance_to_goal =np.array([(pos_ball+1)/2.0, (pos_ball-1)/2.0])
             r = np.dot(who_controls_ball,distance_to_goal)*0.003
+            return r
+
+        def incentive3(self, obs):
+            who_controls_ball = obs[7]
+            distance_to_goal =(obs[0]+1)/2.0
+            r = who_controls_ball*distance_to_goal*0.003
+            return r
+
+        def incentive4(self, obs):
+            who_controls_ball = obs[7]
+            distance_to_goal =np.exp(-np.linalg.norm(obs[0:2]-[1.01,0]))
+            r = who_controls_ball*distance_to_goal*0.003
             return r
 
     if args.use_wrapper:

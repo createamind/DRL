@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--with_checkpoints', type=bool, default=False)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
-    parser.add_argument('--gamma', type=float, default=0.995)
+    parser.add_argument('--gamma', type=float, default=0.997)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=30000)
@@ -426,7 +426,7 @@ if __name__ == '__main__':
             who_controls_ball = obs[7:9]
             pos_ball = obs[0]
             distance_to_goal =np.array([(pos_ball+1)/2.0, (pos_ball-1)/2.0])
-            r = np.dot(who_controls_ball,distance_to_goal)*0.001
+            r = np.dot(who_controls_ball,distance_to_goal)*0.003
             return r
 
     if args.use_wrapper:
