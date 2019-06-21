@@ -309,10 +309,6 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # d = False if ep_len==max_ep_len else d
         done = d
 
-        if done:
-            print('Total reward:', ep_ret, ' Ep_len:', ep_len)
-
-
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d)
 
@@ -322,12 +318,13 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
         # End of episode. Training (ep_len times).
         if done or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
+            print('Total reward:', ep_ret, ' Ep_len:', ep_len)
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
             original paper.
             """
-            for j in range(2*ep_len):
+            for j in range(ep_len):
                 batch = replay_buffer.sample_batch(batch_size)
                 feed_dict = {x_ph: batch['obs1'],
                              x2_ph: batch['obs2'],
@@ -397,7 +394,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=30000)
     parser.add_argument('--max_ep_len', type=int, default=3000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=2e-4)
     parser.add_argument('--exp_name', type=str, default='debug')
     args = parser.parse_args()
