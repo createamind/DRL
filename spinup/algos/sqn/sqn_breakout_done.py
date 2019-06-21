@@ -56,8 +56,8 @@ Soft Actor-Critic
 """ make sure: max_ep_len < steps_per_epoch """
 
 def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
-        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000,
+        steps_per_epoch=5000, epochs=100, replay_size=int(3e6), gamma=0.99,
+        polyak=0.995, lr=1e-3, alpha=0.2, batch_size=300, start_steps=10000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
@@ -296,8 +296,6 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         else:
             a = env.action_space.sample()
 
-        np.random.random()
-
 
         # Step the env
         o2, r, d, _ = env.step(a)
@@ -311,7 +309,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
-        d = False if ep_len==max_ep_len else d
+        # d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d)
@@ -322,6 +320,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
         # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
+            print('Total reward:', ep_ret, ' Ep_len:', ep_len)
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
@@ -386,6 +385,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='Breakout-ram-v4')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--use_wrapper', type=bool, default=True)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -407,17 +407,19 @@ if __name__ == '__main__':
 
         def __init__(self, env):
             self._env = env
+            # self.action_space = Discrete(3)   # Discrete(3)
 
         def __getattr__(self, name):
             return getattr(self._env, name)
 
         def reset(self):
             obs = self._env.reset()
-            # obs = self._env.step(1)[0]
+            # obs = self._env.step(1)[0]   # auto start
             return obs
 
         def step(self, action):
             obs, reward, done, info = self._env.step(action)
+            # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
             if info['ale.lives'] < 5:
                 done = True
             else:
