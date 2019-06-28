@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
     parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--exp_name', type=str, default='Breakout-ram-v4_g0.99_no_0.8_100x')
     args = parser.parse_args()
