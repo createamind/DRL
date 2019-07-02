@@ -344,7 +344,7 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--exp_name', type=str, default='sac1_Pendulum-v0')
     args = parser.parse_args()
@@ -352,7 +352,7 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    env = gym.make(args.env)
+
 
     class Wrapper(object):
 
@@ -372,8 +372,36 @@ if __name__ == '__main__':
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 r -= 0.001
+                if done_:
+                    return obs_, r, done_, info_
             return obs_, r, done_, info_
 
+    class Wrapper1(object):
+
+        def __init__(self, env):
+            self._env = env
+            self.action_space = env.action_space
+            self.action_dim = env.action_space.shape[0]
+            self.obs_dim = env.action_space.shape[0] + env.observation_space.shape[0]
+            self.observation_space = Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def reset(self):
+            obs = self._env.reset()
+            obs = np.append(obs, np.zeros(self.action_dim))
+            return obs
+
+        def step(self, action):
+            r = 0.0
+            for _ in range(3):
+                obs_, reward_, done_, info_ = self._env.step(action)
+                r = r + reward_
+                r -= 0.001
+            obs_ = np.append(obs_, action.reshape(self.action_dim))
+            r = np.clip(r, -50, 1000)
+            return obs_, r, done_, info_
 
     class Env_wrapper(gym.Env):
 
@@ -413,7 +441,7 @@ if __name__ == '__main__':
 
     
     # env = Env_wrapper(args.env, 'obs_act', 3)
-    env = Wrapper(gym.make(args.env))
+    env = Wrapper1(gym.make(args.env))
 
     sac1(lambda : env, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]),
