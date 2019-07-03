@@ -7,6 +7,7 @@ from spinup.algos.sac1 import core
 from spinup.algos.sac1.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
+from spinup.utils.frame_stack import FrameStack
 
 
 class ReplayBuffer:
@@ -49,7 +50,7 @@ Soft Actor-Critic
 def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
-        max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
+        max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
     """
 
     Args:
@@ -135,7 +136,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     tf.set_random_seed(seed)
     np.random.seed(seed)
 
-    env, test_env = env_fn(), env_fn()
+    env, test_env = env_fn(3), env_fn(1)
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.shape[0]
 
@@ -235,15 +236,16 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: o.reshape(1,-1)})[0]
 
-    def test_agent(n=10):
+    def test_agent(n=1):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
-            while not(d or (ep_len == max_ep_len)):
+            while not(d or (ep_len == max_ep_len_test)):
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
                 ep_len += 1
+                # test_env.render()
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
     start_time = time.time()
@@ -271,7 +273,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
-        d = False if ep_len==max_ep_len else d
+        # d = False if ep_len==max_ep_len_train else d
 
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d)
@@ -281,7 +283,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         o = o2
 
         # End of episode. Training (ep_len times).
-        if d or (ep_len == max_ep_len):
+        if d or (ep_len == max_ep_len_train):
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
@@ -320,15 +322,15 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
             logger.log_tabular('EpRet', with_min_and_max=True)
-            logger.log_tabular('TestEpRet', with_min_and_max=True)
+            logger.log_tabular('TestEpRet', with_min_and_max=False)
             logger.log_tabular('EpLen', average_only=True)
             logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha',average_only=True)
-            logger.log_tabular('Q1Vals', with_min_and_max=True) 
-            logger.log_tabular('Q2Vals', with_min_and_max=True) 
+            logger.log_tabular('Q1Vals', with_min_and_max=False)
+            ### logger.log_tabular('Q2Vals', with_min_and_max=True)
             # logger.log_tabular('VVals', with_min_and_max=True)
-            logger.log_tabular('LogPi', with_min_and_max=True)
+            ### logger.log_tabular('LogPi', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
             logger.log_tabular('LossQ2', average_only=True)
@@ -340,13 +342,17 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    parser.add_argument('--max_ep_len_test', type=int, default=2000) # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
+    parser.add_argument('--max_ep_len_train', type=int, default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
+    parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--exp_name', type=str, default='sac1_Pendulum-v0')
+    parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -356,8 +362,9 @@ if __name__ == '__main__':
 
     class Wrapper(object):
 
-        def __init__(self, env):
+        def __init__(self, env, action_repeat=3):
             self._env = env
+            self.action_repeat = action_repeat
 
         def __getattr__(self, name):
             return getattr(self._env, name)
@@ -368,18 +375,19 @@ if __name__ == '__main__':
 
         def step(self, action):
             r = 0.0
-            for _ in range(3):
+            for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
-                r -= 0.001
+                # r -= 0.001
                 if done_:
-                    return obs_, r, done_, info_
+                    return obs_, 0.0, done_, info_
             return obs_, r, done_, info_
 
     class Wrapper1(object):
 
-        def __init__(self, env):
+        def __init__(self, env, action_repeat=3):
             self._env = env
+            self.action_repeat = action_repeat
             self.action_space = env.action_space
             self.action_dim = env.action_space.shape[0]
             self.obs_dim = env.action_space.shape[0] + env.observation_space.shape[0]
@@ -395,12 +403,14 @@ if __name__ == '__main__':
 
         def step(self, action):
             r = 0.0
-            for _ in range(3):
+            for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
-                r -= 0.001
+                # r -= 0.001
+                if done_:
+                    obs_ = np.append(obs_, action.reshape(self.action_dim))
+                    return obs_, 0.0, done_, info_
             obs_ = np.append(obs_, action.reshape(self.action_dim))
-            r = np.clip(r, -50, 1000)
             return obs_, r, done_, info_
 
     class Env_wrapper(gym.Env):
@@ -441,9 +451,12 @@ if __name__ == '__main__':
 
     
     # env = Env_wrapper(args.env, 'obs_act', 3)
-    env = Wrapper1(gym.make(args.env))
+    # env = FrameStack(env, args.stack_frames)
+    # env = Wrapper(gym.make(args.env),action_repeat=3)
+    # test_env = Wrapper(gym.make(args.env),action_repeat=1)
 
-    sac1(lambda : env, actor_critic=core.mlp_actor_critic,
+    sac1(lambda n: Wrapper1(gym.make(args.env),action_repeat=n), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
-        logger_kwargs=logger_kwargs)
+        logger_kwargs=logger_kwargs, lr = args.lr,
+         max_ep_len_train = args.max_ep_len_train, max_ep_len_test=args.max_ep_len_test)
