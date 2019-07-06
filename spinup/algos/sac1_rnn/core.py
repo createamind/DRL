@@ -44,7 +44,7 @@ def clip_but_pass_gradient(x, l=-1., u=1.):
     return x + tf.stop_gradient((u - x) * clip_up + (l - x) * clip_low)
 
 
-def rnn_cell(X, s_t_0, h_size=128):
+def rnn_cell0(X, s_t_0, h_size=128):
     """
     define GRU cell and run cell on given sequence from s_t_o
     outputs N T H
@@ -67,6 +67,24 @@ def rnn_cell(X, s_t_0, h_size=128):
 
     outputs, states = tf.nn.dynamic_rnn(basic_cell, X, initial_state=s_t_0, dtype=tf.float32)
     return outputs, states   # N T H  N H
+
+
+def rnn_cell(X, s_t_0, h_size=128):
+    """
+    define cudnn GRU cell and run cell on given sequence from s_t_o
+    outputs N T H
+    states  N H
+    X       N T D
+    s_t_0   N H
+    """
+
+    basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=h_size)
+    # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=h_size)
+    s_t_0 = tf.expand_dims(s_t_0, 0)
+    with tf.variable_scope("rnn"):
+        outputs, states = basic_cell(tf.transpose(X, (1, 0, 2)), initial_state=(s_t_0,))   # N T D to T N D
+    # print(states[0][0])
+    return tf.transpose(outputs, (1, 0, 2)), states[0][0]  # N T H  N H
 
 
 """
