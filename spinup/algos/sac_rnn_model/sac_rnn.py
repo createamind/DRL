@@ -3,8 +3,8 @@ import tensorflow as tf
 from numbers import Number
 import gym
 import time
-from spinup.algos.sac1 import core
-from spinup.algos.sac1.core import get_vars, rnn_cell, mlp, cudnn_rnn_cell
+from spinup.algos.sac_rnn_model import core
+from spinup.algos.sac_rnn_model.core import get_vars, rnn_cell, mlp, cudnn_rnn_cell
 from spinup.utils.logx import EpochLogger
 import gym
 from gym.spaces import Box, Discrete, Tuple
