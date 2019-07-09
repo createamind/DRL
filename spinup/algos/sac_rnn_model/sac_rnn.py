@@ -247,7 +247,8 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # model_loss = 0.5 * (1 - d_ph[:, :-1, :]) * (x_ph[:, 1:, :] - s_predict[:, :-1, :]) ** 2  # how about "done" state
     delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
     # TODO: can we use L1 loss
-    model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-8)  # how about "done" state
+    model_loss = tf.sqrt(
+        (1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-10)  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
@@ -331,7 +332,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                                                s_t_0: s_t_0_})
         return action.reshape(act_dim), s_t_1_
 
-    def test_agent(mu, pi, states, n=10):
+    def test_agent(mu, pi, states, n=50):
         # global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -341,7 +342,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 a, s_1 = get_action(o, s_0, mu, pi, states, deterministic=True)
                 s_0 = s_1
                 o, r, d, _ = test_env.step(a)
-                test_env.render()
+                # test_env.render()
                 ep_ret += r
                 ep_len += 1
                 # replay_buffer.store(o.reshape([1, obs_dim]), a.reshape([1, act_dim]), r, d)
@@ -356,7 +357,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     s_t_0_ = np.zeros([1, h_size])
     episode = 0
 
-    for t in range(total_steps):
+    for t in range(total_steps+1):
 
         """
         Until start_steps have elapsed, randomly sample actions
@@ -406,7 +407,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             """
             # fps = (time.time() - start)/200
             # print("{} fps".format(200 / (time.time() - start)))
-            # print(ep_len)
+            print(ep_len)
             episode += 1
             start = time.time()
             for j in range(int(ep_len)):
@@ -481,8 +482,8 @@ if __name__ == '__main__':
     from gym_env import Env_wrapper
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
-    # parser.add_argument('--env', type=str, default='Pendulum-v0')
+    # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
+    parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
@@ -494,17 +495,18 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
+    parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.2)
-    parser.add_argument('--h0', type=float, default=0.1)
+    parser.add_argument('--beta', type=float, default=0.3)
+    parser.add_argument('--h0', type=float, default=0.5)
     parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
     parser.add_argument('--opt', type=str, default="mq")
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_model_{}_opt_{}_beta_{}_norm_{}_tm_{}'.format(
+    name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_model_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
@@ -517,7 +519,8 @@ if __name__ == '__main__':
         parser.parse_args().opt,
         parser.parse_args().beta,
         parser.parse_args().norm,
-        parser.parse_args().tm)
+        parser.parse_args().tm,
+        parser.parse_args().repeat)
     parser.add_argument('--exp_name', type=str, default=name)
     args = parser.parse_args()
 
@@ -525,7 +528,7 @@ if __name__ == '__main__':
 
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sac1(lambda: Env_wrapper(args.env, args.flag),
+    sac1(lambda: Env_wrapper(args.env, args.flag, args.repeat),
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
          ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2],
