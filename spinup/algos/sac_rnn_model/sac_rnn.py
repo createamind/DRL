@@ -247,8 +247,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # model_loss = 0.5 * (1 - d_ph[:, :-1, :]) * (x_ph[:, 1:, :] - s_predict[:, :-1, :]) ** 2  # how about "done" state
     delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
     # TODO: can we use L1 loss
-    model_loss = tf.sqrt(
-        (1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-10)  # how about "done" state
+    model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-10)  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
@@ -342,7 +341,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 a, s_1 = get_action(o, s_0, mu, pi, states, deterministic=True)
                 s_0 = s_1
                 o, r, d, _ = test_env.step(a)
-                # test_env.render()
+                test_env.render()
                 ep_ret += r
                 ep_len += 1
                 # replay_buffer.store(o.reshape([1, obs_dim]), a.reshape([1, act_dim]), r, d)
@@ -357,7 +356,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     s_t_0_ = np.zeros([1, h_size])
     episode = 0
 
-    for t in range(total_steps+1):
+    for t in range(total_steps + 1):
 
         """
         Until start_steps have elapsed, randomly sample actions
@@ -423,7 +422,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                     batch = replay_buffer.sample_batch(batch_size)
                     # maybe we can store starting state
                     feed_dict = {x_ph: batch['obs1'],
-                                 s_t_0: batch['s_t_0'],  # all zero matrix for zero state in training
+                                 s_t_0: batch['s_t_0'],  # stored zero state for training
                                  a_ph: batch['acts'],
                                  r_ph: batch['rews'],
                                  d_ph: batch['done'],
@@ -495,9 +494,9 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
-    parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
+    parser.add_argument('--repeat', type=int, default=2, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.3)
+    parser.add_argument('--beta', type=float, default=0.2)
     parser.add_argument('--h0', type=float, default=0.5)
     parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
