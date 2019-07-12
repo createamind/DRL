@@ -201,9 +201,10 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # if use model predict next state (obs)
     with tf.variable_scope("model"):
-        s_predict = mlp(tf.concat([outputs, a_ph], axis=-1), list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"]],
-                        activation=tf.nn.elu)
-
+        # s_predict = mlp(tf.concat([outputs, a_ph], axis=-1), list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"]],
+        #                 activation=tf.nn.elu)
+        s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
+                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"] - act_dim], activation=tf.nn.elu)
     with tf.variable_scope('main'):
         mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, s_t_0, outputs, states,
                                                              **ac_kwargs)
@@ -243,11 +244,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # model train op
     # we can't use s_T to predict s_T+1
-    # model_loss = 0.5 * (x_ph[:, 1:, :] - s_predict[:, :-1, :]) ** 2  # how about "done" state
-    # model_loss = 0.5 * (1 - d_ph[:, :-1, :]) * (x_ph[:, 1:, :] - s_predict[:, :-1, :]) ** 2  # how about "done" state
     delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
     # TODO: can we use L1 loss
-    model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x))  # how about "done" state
+    model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x[:, :, :obs_dim-act_dim]))  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
@@ -261,7 +260,8 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     v_backup = tf.stop_gradient(tf.minimum(q1_pi_, q2_pi_) - alpha * logp_pi)
     # clip curiosity
     in_r = tf.stop_gradient(tf.reduce_mean(tf.clip_by_value(model_loss, 0, 64), axis=-1, keepdims=True))
-    beta = ac_kwargs["beta"]  # adjust internal reward
+    beta = tf.placeholder(dtype=tf.float32, shape=(), name="beta")
+    # beta = ac_kwargs["beta"]  # adjust internal reward
     # can we prove the optimal value of beta
     # I think beta should decrease with training going on
     # beta = alpha  # adjust internal reward
@@ -408,6 +408,8 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             print(ep_len)
             episode += 1
             start = time.time()
+            beta_ = ac_kwargs["beta"] * (1 - t / total_steps)
+            # beta_ = ac_kwargs["beta"] * (1 / t ** 0.5)
             for j in range(int(ep_len)):
                 batch = replay_buffer.sample_batch(batch_size)
                 # maybe we can store starting state
@@ -416,6 +418,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              a_ph: batch['acts'],
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
+                             beta: beta_,
                              }
                 for _ in range(ac_kwargs["tm"] - 1):
                     batch = replay_buffer.sample_batch(batch_size)
@@ -425,6 +428,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                  a_ph: batch['acts'],
                                  r_ph: batch['rews'],
                                  d_ph: batch['done'],
+                                 beta: beta_,
                                  }
                     _ = sess.run(train_model_op, feed_dict)
                 outs = sess.run(step_ops, feed_dict)
@@ -436,12 +440,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              Q2Vals=outs[4].flatten(),
                              LogPi=outs[5].flatten(),
                              Alpha=outs[6],
+                             beta=beta_,
                              model_loss=outs[7].flatten())
-                # print(type(list(outs[7])))
-                # print(sess.run(model_loss, feed_dict).sum(), sess.run(model_loss_, feed_dict).sum())
-                # print(sess.run(model_loss_, feed_dict).sum())
-                # op1_time += (op2_start - op1_start)
-                # op2_time += (end - op2_start)
+
             logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
             s_t_0_ = np.zeros([1, h_size])  # reset s_t_0_ when one episode is finished
@@ -470,6 +471,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha', average_only=True)
+            logger.log_tabular('beta', average_only=True)
             logger.log_tabular('model_loss', with_min_and_max=True)
             logger.log_tabular('Q1Vals', with_min_and_max=True)
             logger.log_tabular('Q2Vals', with_min_and_max=True)
@@ -503,7 +505,7 @@ if __name__ == '__main__':
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.0)
+    parser.add_argument('--beta', type=float, default=1.0)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
@@ -512,7 +514,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
