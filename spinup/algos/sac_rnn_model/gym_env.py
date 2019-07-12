@@ -38,7 +38,7 @@ class Env_wrapper(gym.Env):
             obs = np.append(obs, action.reshape(self.act_dim))
         elif self.flag == "obs_act_reward":
             obs = np.append(obs, action.reshape(self.act_dim), reward)
-        reward = np.clip(reward, -1000, 1000)
+        reward = np.clip(reward, -3, 1000)
         return obs, reward, done, info
 
     def render(self):

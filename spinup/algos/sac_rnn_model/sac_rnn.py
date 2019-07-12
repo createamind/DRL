@@ -196,7 +196,6 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # s_0 = np.zeros([batch_size, h_size])  # zero state for training  N H
 
     # Main outputs from computation graph
-    # outputs, states = rnn_cell(x_ph, s_t_0, h_size=64)
     outputs, states = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
     # outputs, states = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
 
@@ -248,9 +247,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # model_loss = 0.5 * (1 - d_ph[:, :-1, :]) * (x_ph[:, 1:, :] - s_predict[:, :-1, :]) ** 2  # how about "done" state
     delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
     # TODO: can we use L1 loss
-    # model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-10)  # how about "done" state
     model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x))  # how about "done" state
-    # model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2)  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
@@ -344,7 +341,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 a, s_1 = get_action(o, s_0, mu, pi, states, deterministic=True)
                 s_0 = s_1
                 o, r, d, _ = test_env.step(a)
-                test_env.render()
+                # test_env.render()
                 ep_ret += r
                 ep_len += 1
                 # replay_buffer.store(o.reshape([1, obs_dim]), a.reshape([1, act_dim]), r, d)
@@ -370,7 +367,6 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             start = time.time()
 
         if t > start_steps:
-            # TODO: try to store hidden state in buffer
             # s_t_0_store = s_t_0_    # hidden state stored in buffer
             a, s_t_1_ = get_action(o, s_t_0_, mu, pi, states, deterministic=False)
             s_t_0_ = s_t_1_
@@ -436,11 +432,12 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 logger.store(LossPi=outs[0],
                              LossQ1=outs[1],
                              LossQ2=outs[2],
-                             Q1Vals=outs[3],
-                             Q2Vals=outs[4],
-                             LogPi=outs[5],
+                             Q1Vals=outs[3].flatten(),
+                             Q2Vals=outs[4].flatten(),
+                             LogPi=outs[5].flatten(),
                              Alpha=outs[6],
-                             model_loss=outs[7])
+                             model_loss=outs[7].flatten())
+                # print(type(list(outs[7])))
                 # print(sess.run(model_loss, feed_dict).sum(), sess.run(model_loss_, feed_dict).sum())
                 # print(sess.run(model_loss_, feed_dict).sum())
                 # op1_time += (op2_start - op1_start)
@@ -492,17 +489,17 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
-    parser.add_argument('--env', type=str, default='Pendulum-v0')
+    # parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
-    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
+    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
     parser.add_argument('--hid1', type=int, default=400)
     parser.add_argument('--hid2', type=int, default=300)
     parser.add_argument('--state', type=int, default=256)
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=20)
+    parser.add_argument('--seq', type=int, default=15)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -513,7 +510,7 @@ if __name__ == '__main__':
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
     parser.add_argument('--opt', type=str, default="q")
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
     name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
@@ -554,3 +551,6 @@ if __name__ == '__main__':
          epochs=args.epochs,
          alpha=args.alpha,
          logger_kwargs=logger_kwargs)
+
+# source ~/project/env_3_6/bin/activate
+# CUDA_VISIBLE_DEVICES=0 python sac_rnn.py --hid1 400 --hid2 300 --state 256 --seq 15 --h0 0
