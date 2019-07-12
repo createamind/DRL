@@ -51,10 +51,11 @@ class ReplayBuffer:
         :return: s a r s' d
         """
 
-        idxs_c = np.empty([batch_size, self.sequence_length])  # N T+1
+        idxs_c = np.empty([batch_size, self.sequence_length])  # N T
 
         for i in range(batch_size):
             end = False
+            ind = np.random.randint(0, self.size - 5)
             while not end:
                 ind = np.random.randint(0, self.size - 5)  # random sample a starting point in current buffer
                 idxs = np.arange(ind, ind + self.sequence_length)  # extend seq from starting point
@@ -247,7 +248,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # model_loss = 0.5 * (1 - d_ph[:, :-1, :]) * (x_ph[:, 1:, :] - s_predict[:, :-1, :]) ** 2  # how about "done" state
     delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
     # TODO: can we use L1 loss
-    model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-10)  # how about "done" state
+    # model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2 + 1e-10)  # how about "done" state
+    model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x))  # how about "done" state
+    # model_loss = tf.sqrt((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x) ** 2)  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
@@ -331,7 +334,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                                                s_t_0: s_t_0_})
         return action.reshape(act_dim), s_t_1_
 
-    def test_agent(mu, pi, states, n=50):
+    def test_agent(mu, pi, states, n=5):
         # global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -430,9 +433,16 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                     _ = sess.run(train_model_op, feed_dict)
                 outs = sess.run(step_ops, feed_dict)
                 # print(outs)
-                logger.store(LossPi=outs[0], LossQ1=outs[1], LossQ2=outs[2],
-                             Q1Vals=outs[3], Q2Vals=outs[4],
-                             LogPi=outs[5], Alpha=outs[6], model_loss=outs[7])
+                logger.store(LossPi=outs[0],
+                             LossQ1=outs[1],
+                             LossQ2=outs[2],
+                             Q1Vals=outs[3],
+                             Q2Vals=outs[4],
+                             LogPi=outs[5],
+                             Alpha=outs[6],
+                             model_loss=outs[7])
+                # print(sess.run(model_loss, feed_dict).sum(), sess.run(model_loss_, feed_dict).sum())
+                # print(sess.run(model_loss_, feed_dict).sum())
                 # op1_time += (op2_start - op1_start)
                 # op2_time += (end - op2_start)
             logger.store(EpRet=ep_ret, EpLen=ep_len)
@@ -488,24 +498,24 @@ if __name__ == '__main__':
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
-    parser.add_argument('--hid1', type=int, default=300)
+    parser.add_argument('--hid1', type=int, default=400)
     parser.add_argument('--hid2', type=int, default=300)
-    parser.add_argument('--state', type=int, default=64)
+    parser.add_argument('--state', type=int, default=256)
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
-    parser.add_argument('--repeat', type=int, default=2, help="number of action repeat")
+    parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.2)
-    parser.add_argument('--h0', type=float, default=0.5)
-    parser.add_argument('--model', '-m', action='store_true')  # default is false
+    parser.add_argument('--beta', type=float, default=0.0)
+    parser.add_argument('--h0', type=float, default=0.0)
+    # parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
-    parser.add_argument('--opt', type=str, default="mq")
+    parser.add_argument('--opt', type=str, default="q")
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_model_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
@@ -514,7 +524,7 @@ if __name__ == '__main__':
         parser.parse_args().flag,
         parser.parse_args().h0,
         parser.parse_args().alpha,
-        parser.parse_args().model,
+        # parser.parse_args().model,
         parser.parse_args().opt,
         parser.parse_args().beta,
         parser.parse_args().norm,
@@ -535,7 +545,7 @@ if __name__ == '__main__':
                         seq=args.seq,
                         h0=args.h0,
                         beta=args.beta,
-                        model=args.model,
+                        # model=args.model,
                         opt=args.opt,
                         norm=args.norm,
                         tm=args.tm),
