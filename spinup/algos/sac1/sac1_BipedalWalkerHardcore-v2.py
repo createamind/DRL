@@ -48,7 +48,7 @@ Soft Actor-Critic
 
 """
 def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, 
+        steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, reward_scale=1.0,
         polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
         max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -170,12 +170,12 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     if alpha == 'auto':
         target_entropy = (-np.prod(env.action_space.shape))
 
-        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float32, initializer=1.0)
+        log_alpha = tf.get_variable( 'log_alpha', dtype=tf.float32, initializer=0.0)
         alpha = tf.exp(log_alpha)
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
 
-        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr*0.01, name='alpha_optimizer')
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr*0.1, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 ######
 
@@ -236,7 +236,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: o.reshape(1,-1)})[0]
 
-    def test_agent(n=1):
+    def test_agent(n=25):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -303,7 +303,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                             Q1Vals=outs[3], Q2Vals=outs[4],
                             LogPi=outs[5], Alpha=outs[6])
 
-            logger.store(EpRet=ep_ret, EpLen=ep_len)
+            logger.store(EpRet=ep_ret/reward_scale, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
 
@@ -347,10 +347,13 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--lr', type=float, default=5e-4)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--reward_scale', type=float, default=5.0)
+    parser.add_argument('--act_noise', type=float, default=0.0)
+    parser.add_argument('--obs_noise', type=float, default=0.0)
     parser.add_argument('--exp_name', type=str, default='sac1_Pendulum-v0')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
@@ -370,18 +373,21 @@ if __name__ == '__main__':
             return getattr(self._env, name)
 
         def reset(self):
-            obs = self._env.reset()
+            obs = self._env.reset() + args.obs_noise * (-2 * np.random.random(24) + 1)
             return obs
 
         def step(self, action):
+            action +=  args.act_noise * (-2 * np.random.random(4) + 1)
             r = 0.0
             for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 # r -= 0.001
-                if done_:
-                    return obs_, 0.0, done_, info_
-            return obs_, r, done_, info_
+                if done_ and self.action_repeat!=1:
+                    return obs_+  args.obs_noise * (-2 * np.random.random(24) + 1), 0.0, done_, info_
+                if self.action_repeat==1:
+                    return obs_, r, done_, info_
+            return obs_+  args.obs_noise * (-2 * np.random.random(24) + 1), args.reward_scale*r, done_, info_
 
     class Wrapper1(object):
 
@@ -407,7 +413,7 @@ if __name__ == '__main__':
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 # r -= 0.001
-                if done_:
+                if done_ and self.action_repeat!=1:
                     obs_ = np.append(obs_, action.reshape(self.action_dim))
                     return obs_, 0.0, done_, info_
             obs_ = np.append(obs_, action.reshape(self.action_dim))
@@ -455,8 +461,12 @@ if __name__ == '__main__':
     # env = Wrapper(gym.make(args.env),action_repeat=3)
     # test_env = Wrapper(gym.make(args.env),action_repeat=1)
 
-    sac1(lambda n: Wrapper1(gym.make(args.env),action_repeat=n), actor_critic=core.mlp_actor_critic,
+    env3 = Wrapper(gym.make(args.env), 3)
+    env1 = Wrapper(gym.make(args.env), 1)
+
+    sac1(lambda n : env3 if n==3 else env1, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
-        logger_kwargs=logger_kwargs, lr = args.lr,
+        logger_kwargs=logger_kwargs, lr = args.lr, reward_scale=args.reward_scale,
          max_ep_len_train = args.max_ep_len_train, max_ep_len_test=args.max_ep_len_test)
+

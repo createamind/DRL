@@ -402,7 +402,11 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    env1, get_action1 = load_policy('/home/liu/project/DRL/data/biped_sac1_net_2/biped_sac1_net_2_s0', deterministic=True)
+    file_model = '/home/liu/project/DRL/data/biped_sac1_obsnoise0.02_1/biped_sac1_obsnoise0.02_1_s0'
+    env1, get_action1 = load_policy(file_model, deterministic=True)
+    # best_biped_sac1_scale5_1: 283
+    # biped_sac1_rx10_1: 280
+    # biped-294_actnoise0.3_lr1e-4_rx5: 294
 
     class Wrapper(object):
 
@@ -423,8 +427,8 @@ if __name__ == '__main__':
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 # r -= 0.001
-                if done_:
-                    return obs_, 0.0, done_, info_
+                if done_ and self.action_repeat!=1:
+                    return obs_, -0.0, done_, info_
             return obs_, r, done_, info_
 
     class Wrapper1(object):
@@ -451,61 +455,30 @@ if __name__ == '__main__':
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 # r -= 0.001
-                if done_:
+                if done_ and self.action_repeat!=1:
                     obs_ = np.append(obs_, action.reshape(self.action_dim))
                     return obs_, 0.0, done_, info_
             obs_ = np.append(obs_, action.reshape(self.action_dim))
             return obs_, r, done_, info_
 
-    class Env_wrapper(gym.Env):
-
-        def __init__(self, env, flag="obs", action_repeat=1):
-            self.env = gym.make(env)
-            self.action_repeat = action_repeat
-            self.flag = flag
-            self.action_space = self.env.action_space
-            self.observation_space = self.env.observation_space
-            if self.flag == "obs_act":
-                # print("<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-                self.act_dim = self.action_space.shape[0]
-                self.obs_dim = self.action_space.shape[0] + self.env.observation_space.shape[0]
-                self.observation_space = Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
-
-        def reset(self):
-            obs = self.env.reset()
-            if self.flag == "obs_act":
-                obs = np.append(obs, np.zeros(self.act_dim))
-            return obs
-
-        def step(self, action):
-            reward = 0.0
-            for _ in range(self.action_repeat):
-                obs, r, done, info = self.env.step(action)
-                r -= 0.001  # punishment for stay still
-                reward += r
-            # reward -= 0.001
-            if self.flag == "obs_act":
-                obs = np.append(obs, action.reshape(self.act_dim))
-            reward = np.clip(reward, -50, 1000)
-            return obs, reward, done, info
-
-        def render(self):
-            self.env.render()
 
 
     test_env = Wrapper(gym.make(args.env),action_repeat=1)
     # test_env = gym.make(args.env)
     ave_ep_ret = 0
-    for j in range(100):
+    for j in range(500):
         o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
         while not d: # (d or (ep_len == 2000)):
             # Take deterministic actions at test time
-            o, r, d, _ = test_env.step(get_action1(o))
+            aa = get_action1(o)
+            # print(aa)
+            # aa+=0.5*(-2*np.random.random(4)+1)
+            o, r, d, _ = test_env.step(aa)
             ep_ret += r
             ep_len += 1
-            test_env.render()
+            # test_env.render()
         ave_ep_ret = (j*ave_ep_ret + ep_ret)/(j+1)
-        print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret )
+        print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret,'({}/500)'.format(j+1) )
     
     # env = Env_wrapper(args.env, 'obs_act', 3)
     # env = FrameStack(env, args.stack_frames)
@@ -517,3 +490,4 @@ if __name__ == '__main__':
     #     gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
     #     logger_kwargs=logger_kwargs, lr = args.lr, replay_size=args.replay_size, batch_size=args.batch_size,
     #      max_ep_len_train = args.max_ep_len_train, max_ep_len_test=args.max_ep_len_test)
+

@@ -145,7 +145,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
 
-    env, test_env = env_fn(), env_fn()
+    env, test_env = env_fn(3), env_fn(1)
     obs_dim = env.observation_space.shape[0]
     obs_space = env.observation_space
     act_dim = env.action_space.n
@@ -255,7 +255,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
-    def test_agent(n=1):  # n: number of tests
+    def test_agent(n=5):  # n: number of tests
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             # o = test_env.reset()                                           ##################### manual start
@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
     parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.8, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--exp_name', type=str, default='Breakout-ram-v4_g0.99_no_0.8_100x')
     args = parser.parse_args()
@@ -405,8 +405,9 @@ if __name__ == '__main__':
     # reward wrapper
     class BreakoutWrapper(object):
 
-        def __init__(self, env):
+        def __init__(self, env, action_repeat=3):
             self._env = env
+            self.action_repeat = action_repeat
             # self.action_space = Discrete(3)   # Discrete(3)
 
         def __getattr__(self, name):
@@ -414,23 +415,46 @@ if __name__ == '__main__':
 
         def reset(self):
             obs = self._env.reset()
-            # obs = self._env.step(1)[0]   # auto start
+            obs = self._env.step(1)[0]   # auto start
             return obs
 
         def step(self, action):
-            obs, reward, done, info = self._env.step(action)
-            # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
-            if info['ale.lives'] < 5:
-                done = True
-            else:
-                done = False
-            return obs, reward, done, info
+            # action +=  args.act_noise * (-2 * np.random.random(4) + 1)
+            r = 0.0
+            for _ in range(self.action_repeat):
+                obs, reward, done, info = self._env.step(action)
+                # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
+                if info['ale.lives'] < 5:
+                    done = True
+                else:
+                    done = False
+
+                r = r + reward
+
+                if done:
+                    return obs, r, done, info
+
+            return obs, r, done, info
+
+        # def step(self, action):
+        #     obs, reward, done, info = self._env.step(action)
+        #     # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
+        #     if info['ale.lives'] < 5:
+        #         done = True
+        #     else:
+        #         done = False
+        #     return obs, reward, done, info
 
 
     if args.use_wrapper:
         env_breakout = BreakoutWrapper(env_breakout)
 
-    sqn(lambda : env_breakout, actor_critic=core.mlp_actor_critic,
+    env_breakout3 = BreakoutWrapper(gym.make('Breakout-ram-v4'), 3)
+    env_breakout1 = BreakoutWrapper(gym.make('Breakout-ram-v4'), 1)
+
+
+    sqn(lambda n : env_breakout3 if n==3 else env_breakout1, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
+
