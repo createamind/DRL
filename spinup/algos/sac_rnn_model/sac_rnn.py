@@ -487,7 +487,7 @@ if __name__ == '__main__':
     from OpenGL import GLU
     import argparse
     import roboschool
-    from gym_env import Env_wrapper
+    from gym_env import EnvWrapper
 
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
@@ -501,16 +501,16 @@ if __name__ == '__main__':
     parser.add_argument('--hid2', type=int, default=300)
     parser.add_argument('--state', type=int, default=256)
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=15)
+    parser.add_argument('--seq', type=int, default=17)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=1.0)  # starting point of beta
+    parser.add_argument('--beta', type=float, default=0.5)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
-    parser.add_argument('--opt', type=str, default="q")
+    parser.add_argument('--opt', type=str, default="mq")
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
@@ -536,7 +536,7 @@ if __name__ == '__main__':
 
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sac1(lambda: Env_wrapper(args.env, args.flag, args.repeat),
+    sac1(lambda: EnvWrapper(args.env, args.flag, args.repeat),
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
          ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2],

@@ -5,4 +5,6 @@ data/
 **/*.egg-info
 .python-version
 .idea/
+*.npy
+.ipynb*/
 .vscode/
