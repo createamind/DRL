@@ -402,11 +402,11 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    file_model = '/home/liu/project/DRL/data/biped_sac1_obsnoise0.02_1/biped_sac1_obsnoise0.02_1_s0'
+    # file_model = '/home/liu/project/DRL/data/biped_sac1_actnoise0.0_stump_1/biped_sac1_actnoise0.0_stump_1_s0'
+    file_model = '/home/liu/project/DRL/data/biped_sac1_actnoise0.0_stump712/biped_sac1_actnoise0.0_stump712_s0'    # biped_sac1_actnoise0.2_stump_0.6
+    print(file_model)
     env1, get_action1 = load_policy(file_model, deterministic=True)
-    # best_biped_sac1_scale5_1: 283
-    # biped_sac1_rx10_1: 280
-    # biped-294_actnoise0.3_lr1e-4_rx5: 294
+
 
     class Wrapper(object):
 
@@ -463,10 +463,10 @@ if __name__ == '__main__':
 
 
 
-    test_env = Wrapper(gym.make(args.env),action_repeat=1)
-    # test_env = gym.make(args.env)
+    # test_env = Wrapper(gym.make(args.env),action_repeat=1)
+    test_env = gym.make(args.env)
     ave_ep_ret = 0
-    for j in range(500):
+    for j in range(10000):
         o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
         while not d: # (d or (ep_len == 2000)):
             # Take deterministic actions at test time
@@ -478,7 +478,7 @@ if __name__ == '__main__':
             ep_len += 1
             # test_env.render()
         ave_ep_ret = (j*ave_ep_ret + ep_ret)/(j+1)
-        print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret,'({}/500)'.format(j+1) )
+        print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret,'({}/10000)'.format(j+1) )
     
     # env = Env_wrapper(args.env, 'obs_act', 3)
     # env = FrameStack(env, args.stack_frames)
