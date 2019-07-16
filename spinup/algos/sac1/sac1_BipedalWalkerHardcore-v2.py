@@ -352,9 +352,9 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--reward_scale', type=float, default=5.0)
-    parser.add_argument('--act_noise', type=float, default=0.0)
+    parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='sac1_Pendulum-v0')
+    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 
@@ -389,77 +389,8 @@ if __name__ == '__main__':
                     return obs_, r, done_, info_
             return obs_+  args.obs_noise * (-2 * np.random.random(24) + 1), args.reward_scale*r, done_, info_
 
-    class Wrapper1(object):
 
-        def __init__(self, env, action_repeat=3):
-            self._env = env
-            self.action_repeat = action_repeat
-            self.action_space = env.action_space
-            self.action_dim = env.action_space.shape[0]
-            self.obs_dim = env.action_space.shape[0] + env.observation_space.shape[0]
-            self.observation_space = Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
-
-        def __getattr__(self, name):
-            return getattr(self._env, name)
-
-        def reset(self):
-            obs = self._env.reset()
-            obs = np.append(obs, np.zeros(self.action_dim))
-            return obs
-
-        def step(self, action):
-            r = 0.0
-            for _ in range(self.action_repeat):
-                obs_, reward_, done_, info_ = self._env.step(action)
-                r = r + reward_
-                # r -= 0.001
-                if done_ and self.action_repeat!=1:
-                    obs_ = np.append(obs_, action.reshape(self.action_dim))
-                    return obs_, 0.0, done_, info_
-            obs_ = np.append(obs_, action.reshape(self.action_dim))
-            return obs_, r, done_, info_
-
-    class Env_wrapper(gym.Env):
-
-        def __init__(self, env, flag="obs", action_repeat=1):
-            self.env = gym.make(env)
-            self.action_repeat = action_repeat
-            self.flag = flag
-            self.action_space = self.env.action_space
-            self.observation_space = self.env.observation_space
-            if self.flag == "obs_act":
-                # print("<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-                self.act_dim = self.action_space.shape[0]
-                self.obs_dim = self.action_space.shape[0] + self.env.observation_space.shape[0]
-                self.observation_space = Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
-
-        def reset(self):
-            obs = self.env.reset()
-            if self.flag == "obs_act":
-                obs = np.append(obs, np.zeros(self.act_dim))
-            return obs
-
-        def step(self, action):
-            reward = 0.0
-            for _ in range(self.action_repeat):
-                obs, r, done, info = self.env.step(action)
-                r -= 0.001  # punishment for stay still
-                reward += r
-            # reward -= 0.001
-            if self.flag == "obs_act":
-                obs = np.append(obs, action.reshape(self.act_dim))
-            reward = np.clip(reward, -50, 1000)
-            return obs, reward, done, info
-
-        def render(self):
-            self.env.render()
-
-
-    
-    # env = Env_wrapper(args.env, 'obs_act', 3)
     # env = FrameStack(env, args.stack_frames)
-    # env = Wrapper(gym.make(args.env),action_repeat=3)
-    # test_env = Wrapper(gym.make(args.env),action_repeat=1)
 
     env3 = Wrapper(gym.make(args.env), 3)
     env1 = Wrapper(gym.make(args.env), 1)
