@@ -90,7 +90,7 @@ Soft Actor-Critic
 
 def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
          steps_per_epoch=3000, epochs=100, replay_size=int(1e6), gamma=0.99,
-         polyak=0.995, lr=6e-4, alpha=0.2, batch_size=150, start_steps=10000,
+         polyak=0.995, lr=1e-4, alpha=0.2, batch_size=150, start_steps=9000,
          max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
@@ -193,23 +193,20 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     seq = None  # training and testing doesn't has to have the same seq length
     x_ph, a_ph, r_ph, d_ph = core.placeholders([seq, obs_dim], [seq, act_dim], [seq, 1], [seq, 1])
     s_t_0 = tf.placeholder(shape=[None, h_size], name="pre_state", dtype="float32")  # zero state
-    # s_0 = np.zeros([batch_size, h_size])  # zero state for training  N H
 
     # Main outputs from computation graph
     outputs, _ = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
-    # TODO: add another mlp
     # outputs, _ = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
+    outputs = mlp(outputs, [ac_kwargs["h_size"], ac_kwargs["h_size"]], activation=tf.nn.elu)
     states = outputs[:, -1, :]
-
 
     # if use model predict next state (obs)
     with tf.variable_scope("model"):
-        # s_predict = mlp(tf.concat([outputs, a_ph], axis=-1), list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"]],
-        #                 activation=tf.nn.elu)
-        # s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
-        #                 list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"] - act_dim], activation=tf.nn.elu)
+        """hidden size for mlp
+           h_size for RNN
+        """
         s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
-                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["h_size"]], activation=tf.nn.elu)
+                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["h_size"]], activation=tf.nn.relu)
     with tf.variable_scope('main'):
         mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, s_t_0, outputs, states,
                                                              **ac_kwargs)
@@ -237,25 +234,20 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # target_entropy = (-np.prod(env.action_space.shape))
         target_entropy = -np.prod(env.action_space.shape)
 
-        # log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=0.0)
-        # print(ac_kwargs["h0"])
         log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=ac_kwargs["h0"])
         alpha = tf.exp(log_alpha)
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi[:, :-1, :] + target_entropy))
         # Use smaller learning rate to make alpha decay slower
-        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=1e-4, name='alpha_optimizer')
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 
     # model train op
     # we can't use s_T to predict s_T+1
     delta_x = tf.stop_gradient(outputs[:, 1:, :] - outputs[:, :-1, :])  # predict delta obs instead of obs
-    # delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
-    # TODO: can we use L1 loss
-    # model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x[:, :, :obs_dim-act_dim]))  # how about "done" state
+    # model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x[:, :, :obs_dim-act_dim]))
     model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x))  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
         value_params_1 = get_vars('model') + get_vars('rnn')
     else:
@@ -296,8 +288,6 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Value train op
     # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
-    # TODO: maybe we should add parameters in main/rnn to optimizer ---> training is super slow while we adding it
-    # TODO: if use model maybe we shouldn't opt rnn with q???
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     if "q" in ac_kwargs["opt"]:
         value_params = get_vars('main/q') + get_vars('rnn')
@@ -342,7 +332,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                                                s_t_0: s_t_0_})
         return action.reshape(act_dim), s_t_1_
 
-    def test_agent(mu, pi, states, n=5):
+    def test_agent(mu, pi, states, n=10):
         # global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -352,7 +342,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 a, s_1 = get_action(o, s_0, mu, pi, states, deterministic=True)
                 s_0 = s_1
                 o, r, d, _ = test_env.step(a)
-                test_env.render()
+                # test_env.render()
                 ep_ret += r
                 ep_len += 1
                 # replay_buffer.store(o.reshape([1, obs_dim]), a.reshape([1, act_dim]), r, d)
@@ -463,10 +453,10 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # End of epoch wrap-up
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
-            if epoch % 10 == 0:
-                np.save("model_loss_{}".format(epoch), outs[7])
-                np.save("Q_loss_{}".format(epoch), outs[-2])
-                np.save("P_loss_{}".format(epoch), outs[-1])
+            if epoch % 50 == 0:
+                np.save("model__mq_loss_{}".format(epoch), outs[7])
+                np.save("Q_mq_loss_{}".format(epoch), outs[-2])
+                np.save("P_mq_loss_{}".format(epoch), outs[-1])
 
             # Save model
             # if (epoch % save_freq == 0) or (epoch == epochs - 1):
@@ -506,17 +496,17 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
-    parser.add_argument('--env', type=str, default='Pendulum-v0')
-    # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
+    # parser.add_argument('--env', type=str, default='Pendulum-v0')
+    parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
     parser.add_argument('--hid1', type=int, default=400)
     parser.add_argument('--hid2', type=int, default=300)
-    parser.add_argument('--state', type=int, default=256)
+    parser.add_argument('--state', type=int, default=128)
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=30)
+    parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -525,9 +515,9 @@ if __name__ == '__main__':
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
-    parser.add_argument('--opt', type=str, default="q")
+    parser.add_argument('--opt', type=str, default="mq")
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
     name = 'debug_beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
