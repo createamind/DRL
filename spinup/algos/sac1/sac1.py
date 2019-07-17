@@ -352,6 +352,6 @@ if __name__ == '__main__':
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     sac1(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[128,128,128]),
+        ac_kwargs=dict(hidden_sizes=[400, 300]),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
         logger_kwargs=logger_kwargs)

@@ -30,12 +30,12 @@ class Env_wrapper(gym.Env):
         reward = 0.0
         for _ in range(self.action_repeat):
             obs, r, done, info = self.env.step(action)
-            r -= 0.001  # punishment for stay still
+            # r -= 0.001  # punishment for stay still
             reward += r
         # reward -= 0.001
         if self.flag == "obs_act":
             obs = np.append(obs, action.reshape(self.act_dim))
-        reward = np.clip(reward, -50, 1000)
+        reward = np.clip(reward, -3, 1000)
         return obs, reward, done, info
 
     def render(self):

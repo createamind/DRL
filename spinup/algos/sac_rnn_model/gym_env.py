@@ -5,7 +5,7 @@ from gym.spaces import Box, Discrete, Tuple
 import cv2
 
 
-class Env_wrapper(gym.Env):
+class EnvWrapper(gym.Env):
 
     def __init__(self, env, flag="obs", action_repeat=2):
         self.env = gym.make(env)
@@ -33,12 +33,11 @@ class Env_wrapper(gym.Env):
         for _ in range(self.action_repeat):
             obs, r, done, info = self.env.step(action)
             reward += r
-        # reward -= 0.001
         if self.flag == "obs_act":
             obs = np.append(obs, action.reshape(self.act_dim))
         elif self.flag == "obs_act_reward":
             obs = np.append(obs, action.reshape(self.act_dim), reward)
-        reward = np.clip(reward, -1000, 1000)
+        reward = np.clip(reward, -3000, 1000)
         return obs, reward, done, info
 
     def render(self):
@@ -47,7 +46,7 @@ class Env_wrapper(gym.Env):
 
 if __name__ == "__main__":
     for _ in range(4):
-        env = Env_wrapper("BipedalWalkerHardcore-v2")
+        env = EnvWrapper("BipedalWalkerHardcore-v2")
         obs = env.reset()
         done = False
         i = 0
