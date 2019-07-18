@@ -195,10 +195,10 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     s_t_0 = tf.placeholder(shape=[None, h_size], name="pre_state", dtype="float32")  # zero state
 
     # Main outputs from computation graph
-    outputs, _ = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
+    outputs, states = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
     # outputs, _ = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
-    outputs = mlp(outputs, [ac_kwargs["h_size"], ac_kwargs["h_size"]], activation=tf.nn.elu)
-    states = outputs[:, -1, :]
+    # outputs = mlp(outputs, [ac_kwargs["h_size"], ac_kwargs["h_size"]], activation=tf.nn.elu)
+    # states = outputs[:, -1, :]
 
     # if use model predict next state (obs)
     with tf.variable_scope("model"):
