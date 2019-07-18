@@ -198,13 +198,18 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # Main outputs from computation graph
     outputs, states = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
     # outputs, states = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
+    # states = outputs[:, -1, :]
+    # outputs = mlp(outputs, [ac_kwargs["h_size"], ac_kwargs["h_size"]], activation=tf.nn.elu)
 
     # if use model predict next state (obs)
     with tf.variable_scope("model"):
-        # s_predict = mlp(tf.concat([outputs, a_ph], axis=-1), list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"]],
-        #                 activation=tf.nn.elu)
+        """hidden size for mlp
+           h_size for RNN
+        """
         s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
-                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"] - act_dim], activation=tf.nn.elu)
+                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["h_size"]], activation=tf.nn.relu)
+        # s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
+        #                 list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"] - act_dim], activation=tf.nn.elu)
     with tf.variable_scope('main'):
         mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, s_t_0, outputs, states,
                                                              **ac_kwargs)
@@ -244,9 +249,10 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # model train op
     # we can't use s_T to predict s_T+1
-    delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
+    # delta_x = tf.stop_gradient(x_ph[:, 1:, :] - x_ph[:, :-1, :])  # predict delta obs instead of obs
     # TODO: can we use L1 loss
-    model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x[:, :, :obs_dim-act_dim]))  # how about "done" state
+    delta_x = tf.stop_gradient(outputs[:, 1:, :] - outputs[:, :-1, :])  # predict delta obs instead of obs
+    model_loss = tf.abs((1 - d_ph[:, :-1, :]) * (s_predict[:, :-1, :] - delta_x))  # how about "done" state
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
     # print(tf.global_variables())
     if "m" in ac_kwargs["opt"]:
@@ -491,28 +497,28 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
-    # parser.add_argument('--env', type=str, default='Pendulum-v0')
+    parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
-    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
+    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
-    parser.add_argument('--hid1', type=int, default=400)
-    parser.add_argument('--hid2', type=int, default=300)
-    parser.add_argument('--state', type=int, default=256)
+    parser.add_argument('--hid1', type=int, default=256)
+    parser.add_argument('--hid2', type=int, default=256)
+    parser.add_argument('--state', type=int, default=64)
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=17)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
-    parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
+    parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.5)  # starting point of beta
+    parser.add_argument('--beta', type=float, default=0.0)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
-    parser.add_argument('--opt', type=str, default="mq")
+    parser.add_argument('--opt', type=str, default="q")
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
     name = 'beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
