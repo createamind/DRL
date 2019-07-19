@@ -12,7 +12,7 @@ from gym.spaces import Box, Discrete, Tuple
 
 # seq_length = 17
 # seq_length = 20  # sequence length (timestep) T
-# h_size = 256  # hidden state size H
+# state_size = 256  # hidden state size H
 #  = 128  # batch size
 
 
@@ -21,7 +21,7 @@ class ReplayBuffer:
     A simple FIFO experience replay buffer for SAC agents.
     """
 
-    def __init__(self, obs_dim, act_dim, size, h_size, seq_length, flag="single", normalize=False):
+    def __init__(self, obs_dim, act_dim, size, state_size, seq_length, flag="single", normalize=False):
         self.flag = flag
         self.normalize = normalize
         self.sequence_length = seq_length
@@ -29,7 +29,7 @@ class ReplayBuffer:
         self.obs_dim = obs_dim
         size += seq_length  # in case index is out of range
         self.obs1_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.hidden_buf = np.zeros([size, h_size], dtype=np.float32)
+        self.hidden_buf = np.zeros([size, state_size], dtype=np.float32)
         self.acts_buf = np.zeros([size, act_dim], dtype=np.float32)
         self.rews_buf = np.zeros([size, 1], dtype=np.float32)
         self.done_buf = np.zeros([size, 1], dtype=np.float32)
@@ -186,44 +186,45 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # Share information with policy architecture
     ac_kwargs['action_space'] = env.action_space
     ac_kwargs['obs_dim'] = obs_dim
-    h_size = ac_kwargs["h_size"]  # hidden size of rnn
+    state_size = ac_kwargs["state_size"]  # hidden size of rnn
     seq_length = ac_kwargs["seq"]  # seq length of rnn
 
     # Inputs to computation graph
     seq = None  # training and testing doesn't has to have the same seq length
     x_ph, a_ph, r_ph, d_ph = core.placeholders([seq, obs_dim], [seq, act_dim], [seq, 1], [seq, 1])
-    s_t_0 = tf.placeholder(shape=[None, h_size], name="pre_state", dtype="float32")  # zero state
-    # s_0 = np.zeros([batch_size, h_size])  # zero state for training  N H
-
+    s_t_0 = tf.placeholder(shape=[None, state_size], name="pre_state", dtype="float32")  # zero state
+    # pre process x_ph before flow into lstm
+    # x_ph = tf.layers.dense(x_ph, units=666, activation=tf.nn.relu)
+    x_ph_lstm = mlp(x_ph,
+               ac_kwargs["hidden_sizes"],
+               activation=tf.nn.leaky_relu,
+               output_activation=tf.nn.leaky_relu)
     # Main outputs from computation graph
-    outputs, states = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
-    # outputs, states = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
+    # outputs, states = cudnn_rnn_cell(x_ph, s_t_0, state_size=ac_kwargs["state_size"])
+    outputs, states = rnn_cell(x_ph_lstm, s_t_0, state_size=ac_kwargs["state_size"])
     # states = outputs[:, -1, :]
-    # outputs = mlp(outputs, [ac_kwargs["h_size"], ac_kwargs["h_size"]], activation=tf.nn.elu)
+    # outputs = mlp(outputs, [ac_kwargs["state_size"], ac_kwargs["state_size"]], activation=tf.nn.elu)
 
     # if use model predict next state (obs)
     with tf.variable_scope("model"):
         """hidden size for mlp
-           h_size for RNN
+           state_size for RNN
         """
         s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
-                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["h_size"]], activation=tf.nn.relu)
-        # s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
-        #                 list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["obs_dim"] - act_dim], activation=tf.nn.elu)
+                        list(ac_kwargs["pre_sizes"]) + [ac_kwargs["state_size"]], activation=tf.nn.leaky_relu)
+
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, s_t_0, outputs, states,
-                                                             **ac_kwargs)
+        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(a_ph, outputs, **ac_kwargs)
 
     # Target value network
     with tf.variable_scope('target'):
-        _, _, _, _, _, q1_pi_, q2_pi_ = actor_critic(x_ph, a_ph, s_t_0, outputs, states,
-                                                     **ac_kwargs)
+        _, _, _, _, _, q1_pi_, q2_pi_ = actor_critic(a_ph, outputs, **ac_kwargs)
 
     # Experience buffer
     replay_buffer = ReplayBuffer(obs_dim=obs_dim,
                                  act_dim=act_dim,
                                  size=replay_size,
-                                 h_size=h_size,
+                                 state_size=state_size,
                                  seq_length=seq_length,
                                  flag="seq",
                                  normalize=ac_kwargs["norm"])
@@ -341,7 +342,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
-            s_0 = np.zeros([1, h_size])
+            s_0 = np.zeros([1, state_size])
             while not (d or (ep_len == max_ep_len)):
                 # Take deterministic actions at test time
                 a, s_1 = get_action(o, s_0, mu, pi, states, deterministic=True)
@@ -359,7 +360,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     total_steps = steps_per_epoch * epochs
 
     # Main loop: collect experience in env and update/log each epoch
-    s_t_0_ = np.zeros([1, h_size])
+    s_t_0_ = np.zeros([1, state_size])
     episode = 0
 
     for t in range(total_steps + 1):
@@ -396,7 +397,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         d = False if ep_len == max_ep_len else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o.reshape([1, obs_dim]), s_t_0_.reshape([1, h_size]), a.reshape([1, act_dim]), r, d)
+        replay_buffer.store(o.reshape([1, obs_dim]), s_t_0_.reshape([1, state_size]), a.reshape([1, act_dim]), r, d)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
@@ -451,7 +452,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
             logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
-            s_t_0_ = np.zeros([1, h_size])  # reset s_t_0_ when one episode is finished
+            s_t_0_ = np.zeros([1, state_size])  # reset s_t_0_ when one episode is finished
             print("one episode duration:", time.time() - start)
             start = time.time()
 
@@ -501,13 +502,16 @@ if __name__ == '__main__':
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
-    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
+    # parser.add_argument('--env', type=str, default="Humanoid-v2")
+    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
+    parser.add_argument('--env', type=str, default='BipedalWalker-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
     parser.add_argument('--hid1', type=int, default=256)
     parser.add_argument('--hid2', type=int, default=256)
-    parser.add_argument('--state', type=int, default=64)
+    parser.add_argument('--hid3', type=int, default=256)
+    parser.add_argument('--state', type=int, default=128)  # A3C LSTM use 128
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=15)
+    parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -520,7 +524,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'cudnn_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
@@ -529,7 +533,6 @@ if __name__ == '__main__':
         parser.parse_args().flag,
         parser.parse_args().h0,
         parser.parse_args().alpha,
-        # parser.parse_args().model,
         parser.parse_args().opt,
         parser.parse_args().beta,
         parser.parse_args().norm,
@@ -545,12 +548,12 @@ if __name__ == '__main__':
     sac1(lambda: EnvWrapper(args.env, args.flag, args.repeat),
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
-         ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2],
-                        h_size=args.state,
+         ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2, args.hid2],
+                        pre_sizes=[256,],
+                        state_size=args.state,
                         seq=args.seq,
                         h0=args.h0,
                         beta=args.beta,
-                        # model=args.model,
                         opt=args.opt,
                         norm=args.norm,
                         tm=args.tm),

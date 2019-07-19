@@ -1,11 +1,11 @@
 import numpy as np
 import tensorflow as tf
 
-# from sac1 import h_size
+# from sac1 import state_size
 EPS = 1e-8
 
 
-# h_size = 128
+# state_size = 128
 
 
 def placeholder(dim=None):
@@ -47,7 +47,7 @@ def clip_but_pass_gradient(x, l=-1., u=1.):
     return x + tf.stop_gradient((u - x) * clip_up + (l - x) * clip_low)
 
 
-def rnn_cell(X, s_t_0, h_size=128):
+def rnn_cell(X, s_t_0, state_size=128):
     """
     define GRU cell and run cell on given sequence from s_t_o
     outputs N T H
@@ -56,14 +56,14 @@ def rnn_cell(X, s_t_0, h_size=128):
     s_t_0   N H
     """
 
-    n_neurons = h_size  # hidden dim
+    n_neurons = state_size  # hidden dim
     basic_cell = tf.nn.rnn_cell.GRUCell(num_units=n_neurons, reuse=tf.AUTO_REUSE)
 
     outputs, states = tf.nn.dynamic_rnn(basic_cell, X, initial_state=s_t_0, dtype=tf.float32)
     return outputs, states  # N T H  N H
 
 
-def cudnn_rnn_cell(X, s_t_0, h_size=128):
+def cudnn_rnn_cell(X, s_t_0, state_size=128):
     """
     define cudnn GRU cell and run cell on given sequence from s_t_o
     outputs N T H
@@ -72,11 +72,11 @@ def cudnn_rnn_cell(X, s_t_0, h_size=128):
     s_t_0   N H
     """
 
-    basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=h_size)
-    # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=h_size)
+    basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=state_size)
+    # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=state_size)
     s_t_0 = tf.expand_dims(s_t_0, 0)
     with tf.variable_scope("rnn"):
-        outputs, states = basic_cell(tf.transpose(X, (1, 0, 2)), initial_state=(s_t_0,))   # N T D to T N D
+        outputs, states = basic_cell(tf.transpose(X, (1, 0, 2)), initial_state=(s_t_0,))  # N T D to T N D
     # print(states[0][0])
     return tf.transpose(outputs, (1, 0, 2)), states[0][0]  # N T H  N H
 
@@ -91,7 +91,7 @@ LOG_STD_MIN = -20
 
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation):
     act_dim = a.shape.as_list()[-1]
-    net = mlp(x, list(hidden_sizes), activation, activation)
+    net = mlp(x, list(hidden_sizes), activation, output_activation=activation)
     mu = tf.layers.dense(net, act_dim, activation=output_activation)
 
     """
@@ -124,7 +124,7 @@ def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation):
 
 def rnn_gaussian_policy(x, a, hidden_sizes, activation, output_activation):
     act_dim = a.shape.as_list()[-1]
-    net = mlp(x, list(hidden_sizes), activation, activation)
+    net = mlp(x, list(hidden_sizes), activation, output_activation=activation)
     mu = tf.layers.dense(net, act_dim, activation=output_activation)
 
     """
@@ -168,11 +168,54 @@ Actor-Critics
 """
 
 
-def rnn_actor_critic(x, a, s_t_0, outputs, states, hidden_sizes=(400, 300,), h_size=128, activation=tf.nn.relu,
+def rnn_actor_critic(a, outputs, pre_sizes=(256,), activation=tf.nn.leaky_relu,
                      output_activation=None, policy=rnn_gaussian_policy, action_space=None, **kwargs):
     # policy
-    # outputs, states = rnn_cell(x, s_t_0, h_size)  # x--->N T D  x--->N H
-    # outputs = tf.stop_gradient(outputs_)
+    """
+    a: action sequence         N T D
+    outputs: state sequence    N T H
+    """
+    with tf.variable_scope('q1'):
+        q1 = mlp(tf.concat([outputs, a], axis=-1), list(pre_sizes) + [1], activation)
+    # print(list(pre_sizes) + [1])
+
+    with tf.variable_scope('q2'):
+        q2 = mlp(tf.concat([outputs, a], axis=-1), list(pre_sizes) + [1], activation)
+
+    with tf.variable_scope('pi'):
+        # we should use stop gradient
+        # N T H    N T 1
+        mu, pi, logp_pi = policy(tf.stop_gradient(outputs), a, pre_sizes, activation, output_activation)
+        mu = tf.tanh(mu)
+        pi = tf.tanh(pi)
+        # To avoid evil machine precision error, strictly clip 1-pi**2 to [0,1] range.
+        logp_pi -= tf.reduce_sum(tf.log(clip_but_pass_gradient(1 - pi ** 2, l=0, u=1) + 1e-6), axis=-1, keepdims=True)
+
+    # make sure actions are in correct range
+    action_scale = action_space.high[0]
+    # obs_dim = x.shape.as_list()[-1]
+    mu *= action_scale
+    pi *= action_scale
+
+    # state_pi = tf.concat([outputs, pi], axis=-1)
+    with tf.variable_scope('q1', reuse=True):
+        # outputs = rnn_cell(x)
+        q1_pi = mlp(tf.concat([outputs, pi], axis=-1), list(pre_sizes) + [1], activation)
+
+    with tf.variable_scope('q2', reuse=True):
+        # outputs = rnn_cell(x)
+        q2_pi = mlp(tf.concat([outputs, pi], axis=-1), list(pre_sizes) + [1], activation)
+
+    return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi
+
+
+def _rnn_actor_critic(a, outputs, hidden_sizes=(400, 300,), activation=tf.nn.relu,
+                      output_activation=None, policy=rnn_gaussian_policy, action_space=None):
+    # policy
+    """
+    a: action sequence         N T D
+    outputs: state sequence    N T H
+    """
     with tf.variable_scope('q1'):
         q1 = mlp(tf.concat([outputs, a], axis=-1), list(hidden_sizes) + [1], activation)
 
@@ -203,13 +246,6 @@ def rnn_actor_critic(x, a, s_t_0, outputs, states, hidden_sizes=(400, 300,), h_s
         # outputs = rnn_cell(x)
         q2_pi = mlp(tf.concat([outputs, pi], axis=-1), list(hidden_sizes) + [1], activation)
 
-    # if kwargs["model"]:
-    #     # if use model predict next state (obs)
-    #     with tf.variable_scope("model"):  # random mlp
-    #         s_predict = mlp(tf.concat([outputs, a], axis=-1), list(hidden_sizes) + [kwargs["obs_dim"]], activation)
-    #
-    #     return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi, states, s_predict
-    # else:
     return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi
 
 
