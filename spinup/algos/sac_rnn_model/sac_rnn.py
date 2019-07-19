@@ -195,20 +195,22 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     s_t_0 = tf.placeholder(shape=[None, state_size], name="pre_state", dtype="float32")  # zero state
     # pre process x_ph before flow into lstm
     # x_ph = tf.layers.dense(x_ph, units=666, activation=tf.nn.relu)
-    x_ph_lstm = mlp(x_ph,
-               ac_kwargs["hidden_sizes"],
-               activation=tf.nn.leaky_relu,
-               output_activation=tf.nn.leaky_relu)
+    with tf.variable_scope("preprocess"):
+        x_ph_lstm = mlp(x_ph,
+                        ac_kwargs["hidden_sizes"],
+                        activation=tf.nn.leaky_relu,
+                        output_activation=tf.nn.leaky_relu)
     # Main outputs from computation graph
-    # outputs, states = cudnn_rnn_cell(x_ph, s_t_0, state_size=ac_kwargs["state_size"])
-    outputs, states = rnn_cell(x_ph_lstm, s_t_0, state_size=ac_kwargs["state_size"])
+    outputs, states = cudnn_rnn_cell(x_ph, s_t_0, state_size=ac_kwargs["state_size"])
+    # outputs, states = rnn_cell(x_ph_lstm, s_t_0, state_size=ac_kwargs["state_size"])
     # states = outputs[:, -1, :]
     # outputs = mlp(outputs, [ac_kwargs["state_size"], ac_kwargs["state_size"]], activation=tf.nn.elu)
 
     # if use model predict next state (obs)
     with tf.variable_scope("model"):
-        """hidden size for mlp
-           state_size for RNN
+        """
+        hidden size for mlp
+        state_size for RNN
         """
         s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
                         list(ac_kwargs["pre_sizes"]) + [ac_kwargs["state_size"]], activation=tf.nn.leaky_relu)
@@ -500,11 +502,10 @@ if __name__ == '__main__':
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     # parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
-    # parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
-    # parser.add_argument('--env', type=str, default="Humanoid-v2")
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
-    parser.add_argument('--env', type=str, default='BipedalWalker-v2')
+    # parser.add_argument('--env', type=str, default='BipedalWalker-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
     parser.add_argument('--hid1', type=int, default=256)
     parser.add_argument('--hid2', type=int, default=256)
@@ -549,7 +550,7 @@ if __name__ == '__main__':
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
          ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2, args.hid2],
-                        pre_sizes=[256,],
+                        pre_sizes=[256, ],
                         state_size=args.state,
                         seq=args.seq,
                         h0=args.h0,
