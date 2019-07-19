@@ -510,6 +510,7 @@ if __name__ == '__main__':
     parser.add_argument('--hid2', type=int, default=256)
     parser.add_argument('--hid3', type=int, default=256)
     parser.add_argument('--state', type=int, default=128)  # A3C LSTM use 128
+    parser.add_argument('--ps', type=int, default=128)
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
@@ -524,7 +525,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}'.format(
+    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}_ps_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
@@ -538,6 +539,7 @@ if __name__ == '__main__':
         parser.parse_args().beta,
         # parser.parse_args().norm,
         parser.parse_args().tm,
+        parser.parse_args().ps,
         parser.parse_args().repeat)
     parser.add_argument('--exp_name', type=str, default=name)
     args = parser.parse_args()
@@ -550,7 +552,7 @@ if __name__ == '__main__':
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
          ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2, args.hid2],
-                        pre_sizes=[128, ],
+                        pre_sizes=[args.ps, ],    # ps for pre size
                         state_size=args.state,
                         seq=args.seq,
                         h0=args.h0,
