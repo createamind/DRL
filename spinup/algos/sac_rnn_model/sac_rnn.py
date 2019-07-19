@@ -36,7 +36,7 @@ class ReplayBuffer:
         self.target_done_ratio = 0
 
     def store(self, obs, s_t_0, act, rew, done):
-        self.obs1_buf[self.ptr] = obs / 10 if self.normalize else obs
+        self.obs1_buf[self.ptr] = obs  # / 10 if self.normalize else obs
         self.hidden_buf[self.ptr] = s_t_0
         self.acts_buf[self.ptr] = act
         self.rews_buf[self.ptr] = rew
@@ -228,8 +228,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                  size=replay_size,
                                  state_size=state_size,
                                  seq_length=seq_length,
-                                 flag="seq",
-                                 normalize=ac_kwargs["norm"])
+                                 flag="seq")
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
@@ -502,9 +501,9 @@ if __name__ == '__main__':
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     # parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
-    parser.add_argument('--env', type=str, default='Humanoid-v2')
+    # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
-    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
+    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     # parser.add_argument('--env', type=str, default='BipedalWalker-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
     parser.add_argument('--hid1', type=int, default=256)
@@ -519,24 +518,25 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=0.0)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
-    parser.add_argument('--norm', action='store_true')  # default is false
+    # parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
     parser.add_argument('--opt', type=str, default="q")
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
         parser.parse_args().hid2,
+        parser.parse_args().hid3,
         parser.parse_args().state,
         parser.parse_args().flag,
         parser.parse_args().h0,
         parser.parse_args().alpha,
         parser.parse_args().opt,
         parser.parse_args().beta,
-        parser.parse_args().norm,
+        # parser.parse_args().norm,
         parser.parse_args().tm,
         parser.parse_args().repeat)
     parser.add_argument('--exp_name', type=str, default=name)
@@ -550,13 +550,13 @@ if __name__ == '__main__':
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
          ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2, args.hid2],
-                        pre_sizes=[256, ],
+                        pre_sizes=[128, ],
                         state_size=args.state,
                         seq=args.seq,
                         h0=args.h0,
                         beta=args.beta,
                         opt=args.opt,
-                        norm=args.norm,
+                        # norm=args.norm,
                         tm=args.tm),
          gamma=args.gamma,
          seed=args.seed,
