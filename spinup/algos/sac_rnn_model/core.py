@@ -72,10 +72,10 @@ def cudnn_rnn_cell(X, s_t_0, state_size=128):
     s_t_0   N H
     """
 
-    basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=state_size)
-    # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=state_size)
-    s_t_0 = tf.expand_dims(s_t_0, 0)
     with tf.variable_scope("rnn"):
+        basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=state_size)
+        # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=state_size)
+        s_t_0 = tf.expand_dims(s_t_0, 0)
         outputs, states = basic_cell(tf.transpose(X, (1, 0, 2)), initial_state=(s_t_0,))  # N T D to T N D
     # print(states[0][0])
     return tf.transpose(outputs, (1, 0, 2)), states[0][0]  # N T H  N H
@@ -168,7 +168,7 @@ Actor-Critics
 """
 
 
-def rnn_actor_critic(a, outputs, pre_sizes=(256,), activation=tf.nn.leaky_relu,
+def rnn_actor_critic(a, outputs, hidden_sizes=(256,), activation=tf.nn.leaky_relu,
                      output_activation=None, policy=rnn_gaussian_policy, action_space=None, **kwargs):
     # policy
     """
@@ -176,16 +176,16 @@ def rnn_actor_critic(a, outputs, pre_sizes=(256,), activation=tf.nn.leaky_relu,
     outputs: state sequence    N T H
     """
     with tf.variable_scope('q1'):
-        q1 = mlp(tf.concat([outputs, a], axis=-1), list(pre_sizes) + [1], activation)
+        q1 = mlp(tf.concat([outputs, a], axis=-1), list(hidden_sizes) + [1], activation)
     # print(list(pre_sizes) + [1])
 
     with tf.variable_scope('q2'):
-        q2 = mlp(tf.concat([outputs, a], axis=-1), list(pre_sizes) + [1], activation)
+        q2 = mlp(tf.concat([outputs, a], axis=-1), list(hidden_sizes) + [1], activation)
 
     with tf.variable_scope('pi'):
         # we should use stop gradient
         # N T H    N T 1
-        mu, pi, logp_pi = policy(tf.stop_gradient(outputs), a, pre_sizes, activation, output_activation)
+        mu, pi, logp_pi = policy(tf.stop_gradient(outputs), a, hidden_sizes, activation, output_activation)
         mu = tf.tanh(mu)
         pi = tf.tanh(pi)
         # To avoid evil machine precision error, strictly clip 1-pi**2 to [0,1] range.
@@ -200,11 +200,11 @@ def rnn_actor_critic(a, outputs, pre_sizes=(256,), activation=tf.nn.leaky_relu,
     # state_pi = tf.concat([outputs, pi], axis=-1)
     with tf.variable_scope('q1', reuse=True):
         # outputs = rnn_cell(x)
-        q1_pi = mlp(tf.concat([outputs, pi], axis=-1), list(pre_sizes) + [1], activation)
+        q1_pi = mlp(tf.concat([outputs, pi], axis=-1), list(hidden_sizes) + [1], activation)
 
     with tf.variable_scope('q2', reuse=True):
         # outputs = rnn_cell(x)
-        q2_pi = mlp(tf.concat([outputs, pi], axis=-1), list(pre_sizes) + [1], activation)
+        q2_pi = mlp(tf.concat([outputs, pi], axis=-1), list(hidden_sizes) + [1], activation)
 
     return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi
 

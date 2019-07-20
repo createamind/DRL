@@ -197,7 +197,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # x_ph = tf.layers.dense(x_ph, units=666, activation=tf.nn.relu)
     with tf.variable_scope("preprocess"):
         x_ph_lstm = mlp(x_ph,
-                        ac_kwargs["hidden_sizes"],
+                        ac_kwargs["pre_sizes"],
                         activation=tf.nn.leaky_relu,
                         output_activation=tf.nn.leaky_relu)
     # Main outputs from computation graph
@@ -213,7 +213,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         state_size for RNN
         """
         s_predict = mlp(tf.concat([outputs, a_ph], axis=-1),
-                        list(ac_kwargs["pre_sizes"]) + [ac_kwargs["state_size"]], activation=tf.nn.leaky_relu)
+                        list(ac_kwargs["hidden_sizes"]) + [ac_kwargs["state_size"]], activation=tf.nn.leaky_relu)
 
     with tf.variable_scope('main'):
         mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(a_ph, outputs, **ac_kwargs)
@@ -501,46 +501,44 @@ if __name__ == '__main__':
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     # parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
-    # parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
-    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
+    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     # parser.add_argument('--env', type=str, default='BipedalWalker-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
-    parser.add_argument('--hid1', type=int, default=256)
-    parser.add_argument('--hid2', type=int, default=256)
-    parser.add_argument('--hid3', type=int, default=256)
-    parser.add_argument('--state', type=int, default=128)  # A3C LSTM use 128
-    parser.add_argument('--ps', type=int, default=128)
+    parser.add_argument('--hid1', type=int, default=300)
+    parser.add_argument('--hid2', type=int, default=300)
+    # parser.add_argument('--hid3', type=int, default=64)
+    parser.add_argument('--state', type=int, default=256)  # A3C LSTM use 128
+    parser.add_argument('--ps', type=int, default=300)  # pre process hidden state
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=20)
+    parser.add_argument('--seq', type=int, default=15)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
-    parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
+    parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.0)  # starting point of beta
+    parser.add_argument('--beta', type=float, default=0.2)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
     # parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
-    parser.add_argument('--opt', type=str, default="q")
+    parser.add_argument('--opt', type=str, default="mq")
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}_ps_{}'.format(
+    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}_ps_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
         parser.parse_args().hid2,
-        parser.parse_args().hid3,
         parser.parse_args().state,
         parser.parse_args().flag,
         parser.parse_args().h0,
         parser.parse_args().alpha,
         parser.parse_args().opt,
         parser.parse_args().beta,
-        # parser.parse_args().norm,
         parser.parse_args().tm,
-        parser.parse_args().ps,
-        parser.parse_args().repeat)
+        parser.parse_args().repeat,
+        parser.parse_args().ps)
     parser.add_argument('--exp_name', type=str, default=name)
     args = parser.parse_args()
 
@@ -551,14 +549,13 @@ if __name__ == '__main__':
     sac1(lambda: EnvWrapper(args.env, args.flag, args.repeat),
          actor_critic=core.rnn_actor_critic,
          batch_size=args.batch_size,
-         ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2, args.hid2],
-                        pre_sizes=[args.ps, ],    # ps for pre size
+         ac_kwargs=dict(hidden_sizes=[args.hid1, args.hid2],
+                        pre_sizes=[args.ps, ],  # ps for preprocess mlp size
                         state_size=args.state,
                         seq=args.seq,
                         h0=args.h0,
                         beta=args.beta,
                         opt=args.opt,
-                        # norm=args.norm,
                         tm=args.tm),
          gamma=args.gamma,
          seed=args.seed,
