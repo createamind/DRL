@@ -49,7 +49,9 @@ Try trained model on env 'Breakout-ram-v4':
 
 $ python -m spinup.run test_policy ./saved_models/Breakout-ram-v4 -d -l 20000
 
-More experiments: https://mp.weixin.qq.com/s/-ZWj-uw5wWWhGy3B08Xk3Q
+More experiments: 
+https://mp.weixin.qq.com/s/-ZWj-uw5wWWhGy3B08Xk3Q (sqn)
+https://mp.weixin.qq.com/s/8vgLGcpsWkF89ma7T2twRA ('BipedalWalkerHardcore-v2')
 
 
 ### Awesome-DRL-Papers

@@ -1,5 +1,6 @@
+
 ## BipedalWalker-v2
-==================================
+
 <div>
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped298.png" width="350" style="display:inline"/>
 </div>
@@ -13,7 +14,6 @@ https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWal
 
 
 ## BipedalWalkerHardcore-v2
-==================================
 
 <div>
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/3trail.png" width="550" style="display:inline"/>
@@ -41,4 +41,4 @@ try saved model:
 https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_test.py
 
 experiment details:
-
+https://mp.weixin.qq.com/s/8vgLGcpsWkF89ma7T2twRA
