@@ -10,7 +10,7 @@ class Exp_analyse:
     Analyse spinup result
     """
 
-    def __init__(self, dir_path="/home/gu/project/DRL/data/cudnn_L1_BipedalWalkerHardcore-v2*_repeat_*"):
+    def __init__(self, dir_path="/home/gu/project/DRL/data/cudnn_L1_HalfCheetah-v2*"):
         pd.options.mode.chained_assignment = None  # ignore warning
         self.dir_path = dir_path
         self.param = None

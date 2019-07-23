@@ -60,13 +60,15 @@ class ReplayBuffer:
                 ind = np.random.randint(0, self.size - 5)  # random sample a starting point in current buffer
                 idxs = np.arange(ind, ind + self.sequence_length)  # extend seq from starting point
                 # 0000000 or 0000010 is valid   sum(done) <= 1
+                # np.where --> (array([1]),)
                 is_valid_pos = True if sum(self.done_buf[idxs]) == 0 else \
-                    (((self.sequence_length - np.where(self.done_buf[idxs] == 1)[0][0]) == 2) and
-                     (sum(self.done_buf[idxs]) == 1))
+                    ((((self.sequence_length - np.where(self.done_buf[idxs] == 1)[0][0]) == 2) or ((
+                                self.sequence_length - np.where(self.done_buf[idxs] == 1)[0][0]) == 1)) and
+                (sum(self.done_buf[idxs]) == 1))
 
                 end = True if is_valid_pos else False
 
-            idxs_c[i] = idxs
+                idxs_c[i] = idxs  # store valid sequence
 
         np.random.shuffle(idxs_c)
         idxs = idxs_c.astype(int)
@@ -76,6 +78,7 @@ class ReplayBuffer:
                     acts=self.acts_buf[idxs],
                     rews=self.rews_buf[idxs],
                     done=self.done_buf[idxs])
+
         return data
 
 
@@ -195,11 +198,14 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     s_t_0 = tf.placeholder(shape=[None, state_size], name="pre_state", dtype="float32")  # zero state
     # pre process x_ph before flow into lstm
     # x_ph = tf.layers.dense(x_ph, units=666, activation=tf.nn.relu)
-    with tf.variable_scope("preprocess"):
-        x_ph_lstm = mlp(x_ph,
-                        ac_kwargs["pre_sizes"],
-                        activation=tf.nn.leaky_relu,
-                        output_activation=tf.nn.leaky_relu)
+    if ac_kwargs["pre_sizes"][0] == 0:
+        x_ph_lstm = x_ph
+    else:
+        with tf.variable_scope("preprocess"):
+            x_ph_lstm = mlp(x_ph,
+                            ac_kwargs["pre_sizes"],
+                            activation=tf.nn.leaky_relu,
+                            output_activation=tf.nn.leaky_relu)
     # Main outputs from computation graph
     outputs, states = cudnn_rnn_cell(x_ph, s_t_0, state_size=ac_kwargs["state_size"])
     # outputs, states = rnn_cell(x_ph_lstm, s_t_0, state_size=ac_kwargs["state_size"])
@@ -280,8 +286,16 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     pi_loss = tf.reduce_mean(alpha * logp_pi - q1_pi)
     # in some case, the last timestep Q function is super important so maybe we can use weight sum of loss
     # calculate last timestep separately for convince
-    q1_loss = 0.5 * tf.reduce_mean((q1[:, :-1, :] - q_backup) ** 2)
-    q2_loss = 0.5 * tf.reduce_mean((q2[:, :-1, :] - q_backup) ** 2)
+
+    # burn in
+    q1_loss_ = (q1[:, :-1, :] - q_backup)
+    q2_loss_ = (q2[:, :-1, :] - q_backup)
+    q1_loss = 0.5 * tf.reduce_mean(q1_loss_[:, 5:, :] ** 2)
+    q2_loss = 0.5 * tf.reduce_mean(q2_loss_[:, 5:, :] ** 2)
+
+    # if not build in
+    # q1_loss = 0.5 * tf.reduce_mean((q1[:, :-1, :] - q_backup) ** 2)
+    # q2_loss = 0.5 * tf.reduce_mean((q2[:, :-1, :] - q_backup) ** 2)
     value_loss = q1_loss + q2_loss
 
     # Policy train op
@@ -292,7 +306,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         train_pi_op = pi_optimizer.minimize(pi_loss, var_list=get_vars('main/pi'))
 
     # Value train op
-    # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
+    # (control dep of train_pi_op because sess.run dotherwise evaluates in nondeterministic order)
     # TODO: maybe we should add parameters in main/rnn to optimizer ---> training is super slow while we adding it
     # TODO: if use model maybe we shouldn't opt rnn with q???
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
@@ -449,7 +463,8 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              LogPi=outs[5].flatten(),
                              Alpha=outs[6],
                              beta=beta_,
-                             model_loss=np.mean(outs[7].flatten()))
+                             model_loss_mean=np.mean(outs[7]),
+                             model_loss_max=np.max(outs[7]))
 
             logger.store(EpRet=ep_ret, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -480,7 +495,8 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha', average_only=True)
             logger.log_tabular('beta', average_only=True)
-            logger.log_tabular('model_loss', with_min_and_max=True)
+            logger.log_tabular('model_loss_mean', average_only=True)
+            logger.log_tabular('model_loss_max', average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=True)
             logger.log_tabular('Q2Vals', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
@@ -500,8 +516,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     # parser.add_argument('--env', type=str, default='Pendulum-v0')
-    # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
-    parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='HalfCheetah-v2')
+    # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     # parser.add_argument('--env', type=str, default='BipedalWalker-v2')
@@ -509,10 +525,10 @@ if __name__ == '__main__':
     parser.add_argument('--hid1', type=int, default=300)
     parser.add_argument('--hid2', type=int, default=300)
     # parser.add_argument('--hid3', type=int, default=64)
-    parser.add_argument('--state', type=int, default=256)  # A3C LSTM use 128
+    parser.add_argument('--state', type=int, default=128)  # A3C LSTM use 128
     parser.add_argument('--ps', type=int, default=300)  # pre process hidden state
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=15)
+    parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -525,7 +541,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'Pre_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}_ps_{}'.format(
+    name = 'DEBUG_build_Pre_L1_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_tm_{}_repeat_{}_ps_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,

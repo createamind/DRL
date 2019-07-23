@@ -85,8 +85,8 @@ def cudnn_rnn_cell(X, s_t_0, state_size=128):
 Policies
 """
 
-LOG_STD_MAX = 2
-LOG_STD_MIN = -20
+LOG_STD_MAX = 2     # 7.4
+LOG_STD_MIN = -20   # 2e-9
 
 
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation):
@@ -168,25 +168,25 @@ Actor-Critics
 """
 
 
-def rnn_actor_critic(a, outputs, hidden_sizes=(256,), activation=tf.nn.leaky_relu,
+def rnn_actor_critic(a_ph, outputs, hidden_sizes=(256,), activation=tf.nn.leaky_relu,
                      output_activation=None, policy=rnn_gaussian_policy, action_space=None, **kwargs):
     # policy
     """
-    a: action sequence         N T D
+    a_ph: action sequence      N T D
     outputs: state sequence    N T H
     """
     with tf.variable_scope('q1'):
-        q1 = mlp(tf.concat([outputs, a], axis=-1), list(hidden_sizes) + [1], activation)
+        q1 = mlp(tf.concat([outputs, a_ph], axis=-1), list(hidden_sizes) + [1], activation)
     # print(list(pre_sizes) + [1])
 
     with tf.variable_scope('q2'):
-        q2 = mlp(tf.concat([outputs, a], axis=-1), list(hidden_sizes) + [1], activation)
+        q2 = mlp(tf.concat([outputs, a_ph], axis=-1), list(hidden_sizes) + [1], activation)
 
     with tf.variable_scope('pi'):
         # we should use stop gradient
         # N T H    N T 1
-        mu, pi, logp_pi = policy(tf.stop_gradient(outputs), a, hidden_sizes, activation, output_activation)
-        mu = tf.tanh(mu)
+        mu, pi, logp_pi = policy(tf.stop_gradient(outputs), a_ph, hidden_sizes, activation, output_activation)
+        mu = tf.tanh(mu)  # apply squashing
         pi = tf.tanh(pi)
         # To avoid evil machine precision error, strictly clip 1-pi**2 to [0,1] range.
         logp_pi -= tf.reduce_sum(tf.log(clip_but_pass_gradient(1 - pi ** 2, l=0, u=1) + 1e-6), axis=-1, keepdims=True)
