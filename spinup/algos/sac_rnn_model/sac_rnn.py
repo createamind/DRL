@@ -526,11 +526,11 @@ if __name__ == '__main__':
     parser.add_argument('--hid2', type=int, default=300)
     # parser.add_argument('--hid3', type=int, default=64)
     parser.add_argument('--state', type=int, default=128)  # A3C LSTM use 128
-    parser.add_argument('--ps', type=int, default=300)  # pre process hidden state
+    parser.add_argument('--ps', type=int, default=0)  # pre process hidden state
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=20)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
-    parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
+    parser.add_argument('--repeat', type=int, default=3, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--beta', type=float, default=0.2)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
