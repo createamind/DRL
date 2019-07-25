@@ -314,8 +314,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             epoch = t // steps_per_epoch
 
             if epoch > 2000:
-                test_agent(100)
+                test_agent(50)
                 test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
+                logger.epoch_dict['TestEpRet'] = []
                 print('TestEpRet', test_ep_ret_1)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
