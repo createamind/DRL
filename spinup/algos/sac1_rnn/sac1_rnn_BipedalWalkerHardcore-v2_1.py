@@ -249,7 +249,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
             _[i], _[i], logp_pi_[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,i], a_ph[:,i], **ac_kwargs)
 
     _, _, logp_pi, q1, q2, q1_pi, q2_pi = tf.stack(_), tf.stack(_), tf.stack(logp_pi,axis=1), tf.stack(q1,axis=1), tf.stack(q2,axis=1), tf.stack(q1_pi,axis=1), tf.stack(q2_pi,axis=1)
-    _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_,), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
+    _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
 
 
     ######################################
@@ -365,26 +365,31 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
                 # test_env.render()
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
-    start_time = time.time()
-    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
-    hc_run = np.zeros((1,128,), dtype=np.float32)
-    total_steps = steps_per_epoch * epochs
-
-    test_ep_ret = test_ep_ret_1 = -10000.0
-
-
     ################################## deques
 
     obs_01_hc_queue = deque([], maxlen=Lb + Lt + 1)
     a_r_d_queue = deque([], maxlen=Lb + Lt)
 
+    ################################## deques
+
+
+    start_time = time.time()
+
+    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+
+    ################################## deques reset
+    t_queue = 1
+    hc_run = np.zeros((1,128,), dtype=np.float32)
     for _i in range(Lb):
         obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
         a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
-
     obs_01_hc_queue.append((o, True, hc_run[0]))
 
-    ################################## deques
+    ################################## deques reset
+
+    total_steps = steps_per_epoch * epochs
+
+    test_ep_ret = test_ep_ret_1 = -10000.0
 
 
     # Main loop: collect experience in env and update/log each epoch
@@ -422,18 +427,20 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
         #################################### deques store
 
+        episode_end = not (d or (ep_len == max_ep_len_train))
         a_r_d_queue.append((a, r, d))
-        obs_01_hc_queue.append((o2, True, hc_run[0] ))
-        # obs_01_hc_queue.append((o2, True, s_t_1_[0]))
+        obs_01_hc_queue.append((o2, episode_end, hc_run[0] ))
 
-        if (t+1) % Lb == 0:
+        if t_queue % Lt == 0:
             replay_buffer_rnn.store(obs_01_hc_queue,a_r_d_queue)
 
-        if (d or (ep_len == max_ep_len_train)) and (t + 1) % Lb != 0:
-            for _0 in range(Lb - (t + 1) % Lb):
+        if (d or (ep_len == max_ep_len_train)) and t_queue % Lt != 0:
+            for _0 in range(Lt - t_queue % Lt):
                 a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
                 obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
             replay_buffer_rnn.store(obs_01_hc_queue, a_r_d_queue)
+
+        t_queue += 1
 
         #################################### deques store
 
@@ -462,7 +469,17 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
             logger.store(EpRet=ep_ret / reward_scale, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
-            hc_run = np.zeros((1,128,), dtype=np.float32)
+
+            ################################## deques reset
+            t_queue = 1
+            hc_run = np.zeros((1, 128,), dtype=np.float32)
+            for _i in range(Lb):
+                obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
+                a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
+            obs_01_hc_queue.append((o, True, hc_run[0]))
+
+            ################################## deques reset
+
 
         # End of epoch wrap-up
         if t > 0 and t % steps_per_epoch == 0:
@@ -475,7 +492,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
             #     logger.epoch_dict['TestEpRet'] = []
             #     print('TestEpRet', test_ep_ret_1)
 
-            test_agent(5)
+            test_agent(25)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
