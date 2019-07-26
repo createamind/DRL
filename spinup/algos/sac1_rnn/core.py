@@ -1,10 +1,16 @@
 import numpy as np
 import tensorflow as tf
+from numbers import Number
 
 EPS = 1e-8
 
 def placeholder(dim=None):
-    return tf.placeholder(dtype=tf.float32, shape=(None,dim) if dim else (None,))
+    if dim is None:
+        return tf.placeholder(dtype=tf.float32, shape=(None,))
+    elif isinstance(dim, Number):
+        return tf.placeholder(dtype=tf.float32, shape=(None, dim))
+    else:
+        return tf.placeholder(dtype=tf.float32, shape=((None,) + dim))
 
 def placeholders(*args):
     return [placeholder(dim) for dim in args]
@@ -84,8 +90,9 @@ Actor-Critics
 def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu, 
                      output_activation=None, policy=mlp_gaussian_policy, action_space=None):
     # policy
-    with tf.variable_scope('pi'):
+    with tf.variable_scope('pi', reuse=tf.AUTO_REUSE):
         mu, pi, logp_pi = policy(x, a, hidden_sizes, activation, output_activation)
+        # mu, pi, logp_pi = tf.stop_gradient(policy(x, a, hidden_sizes, activation, output_activation))
         mu, pi, logp_pi = apply_squashing_func(mu, pi, logp_pi)
 
     # make sure actions are in correct range
@@ -96,13 +103,48 @@ def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu,
     # vfs
     # tf.squeeze( shape(?,1), axis=1 ) = shape(?,)
     vf_mlp = lambda x : tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
-    with tf.variable_scope('q1'):
+    with tf.variable_scope('q1', reuse=tf.AUTO_REUSE):
         q1 = vf_mlp(tf.concat([x,a], axis=-1))
     with tf.variable_scope('q1', reuse=True):
         q1_pi = vf_mlp(tf.concat([x,pi], axis=-1))
-    with tf.variable_scope('q2'):
+    with tf.variable_scope('q2', reuse=tf.AUTO_REUSE):
         q2 = vf_mlp(tf.concat([x,a], axis=-1))
     with tf.variable_scope('q2', reuse=True):
         q2_pi = vf_mlp(tf.concat([x,pi], axis=-1))
 
     return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi
+
+
+
+
+def sac1_dynamic_rnn(x, hc_0, hc_size=128):
+    """
+    define GRU cell and run cell on given sequence from s_t_o
+    outputs N L H
+    states  N   H
+    x       N L D
+    hc_0    N   H
+    """
+    basic_cell = tf.nn.rnn_cell.GRUCell(num_units=hc_size, reuse=tf.AUTO_REUSE)
+
+    outputs, states = tf.nn.dynamic_rnn(basic_cell, x, initial_state=hc_0, dtype=tf.float32)
+
+    return outputs, states   # N T H  N H
+
+
+def sac1_dynamic_rnn1(x, hc_0, hc_size=128):  # sac1_dynamic_cudnn_rnn
+    """
+    define cudnn GRU cell and run cell on given sequence from s_t_o
+    outputs N T H
+    states  N H
+    X       N T D
+    s_t_0   N H
+    """
+
+    basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=hc_size)
+    # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=h_size)
+    hc_0 = tf.expand_dims(hc_0, 0)
+    with tf.variable_scope("rnn", reuse=tf.AUTO_REUSE):
+        outputs, states = basic_cell(tf.transpose(x, (1, 0, 2)), initial_state=(hc_0,))   # N T D to T N D
+    # print(states[0][0])
+    return tf.transpose(outputs, (1, 0, 2)), states[0][0]  # N T H  N H

@@ -8,7 +8,7 @@ from spinup.algos.sac1_rnn.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack
-
+from collections import deque
 
 class ReplayBuffer:
     """
@@ -41,16 +41,59 @@ class ReplayBuffer:
                     done=self.done_buf[idxs])
 
 
+
+
+class ReplayBuffer_RNN:
+    """
+    A simple FIFO experience replay buffer for SAC_RNN agents.
+    """
+
+    def __init__(self, Lb, Lt, hc_dim, obs_dim, act_dim, size):
+        self.buffer_obs = np.zeros([size, Lb+Lt+1, obs_dim], dtype=np.float32)
+        self.buffer_obs01  = np.zeros([size, Lb+Lt+1], dtype=np.float32)
+        self.buffer_hc  = np.zeros([size, hc_dim], dtype=np.float32)
+        self.buffer_a = np.zeros([size, Lb+Lt, act_dim], dtype=np.float32)
+        self.buffer_r = np.zeros([size, Lb+Lt], dtype=np.float32)
+        self.buffer_d = np.zeros([size, Lb+Lt], dtype=np.float32)
+        self.ptr, self.size, self.max_size = 0, 0, size
+
+    def store(self, obs_01_hc_queue, a_r_d_queue):
+        obs, obs01, hc = np.stack(obs_01_hc_queue,axis=1)
+        self.buffer_obs[self.ptr] = np.array(list(obs),dtype=np.float32)
+        self.buffer_obs01[self.ptr] = np.array(list(obs01),dtype=np.float32)
+        self.buffer_hc[self.ptr] = np.array(list(hc),dtype=np.float32)[0]
+        a, r, d = np.stack(a_r_d_queue, axis=1)
+        self.buffer_a[self.ptr] = np.array(list(a),dtype=np.float32)
+        self.buffer_r[self.ptr] = np.array(list(r),dtype=np.float32)
+        self.buffer_d[self.ptr] = np.array(list(d),dtype=np.float32)
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
+
+    def sample_batch(self, batch_size=32):
+        idxs = np.random.randint(0, self.size, size=batch_size)
+        return dict(obs=self.buffer_obs[idxs],
+                    obs01=self.buffer_obs01[idxs],
+                    hc=self.buffer_hc[idxs],
+                    acts=self.buffer_a[idxs],
+                    rews=self.buffer_r[idxs],
+                    done=self.buffer_d[idxs])
+
+
+
+
 """
 
 Soft Actor-Critic
 
 (With slight variations that bring it closer to TD3)
 
+
+ Lt >= Lb > 0 !!!
+
 """
 
 
-def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core.sac1_dynamic_rnn, ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128,
          steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, reward_scale=1.0,
          polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
          max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
@@ -149,20 +192,66 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
+
+    ######################################
     # Inputs to computation graph
-    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders(obs_dim, act_dim, obs_dim, None, None)
+    # x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders(obs_dim, act_dim, obs_dim, None, None)
+    #
+    # # Main outputs from computation graph
+    # with tf.variable_scope('main'):
+    #     mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, **ac_kwargs)
+    #
+    # # Target value network
+    # with tf.variable_scope('target'):
+    #     _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = actor_critic(x2_ph, a_ph, **ac_kwargs)
+    # #
+    #
 
-    # Main outputs from computation graph
-    with tf.variable_scope('main'):
-        mu, pi, logp_pi, q1, q2, q1_pi, q2_pi = actor_critic(x_ph, a_ph, **ac_kwargs)
+    ######################################
 
-    # Target value network
-    with tf.variable_scope('target'):
-        _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = actor_critic(x2_ph, a_ph, **ac_kwargs)
+    obs_ph, obs01_ph, hc_ph = core.placeholders((Lb+Lt+1, obs_dim), (Lb+Lt+1,), (hc_dim,))
+    a_ph_all, r_ph_all, d_ph_all = core.placeholders((Lb+Lt, act_dim), (Lb+Lt,), (Lb+Lt,))
+
+    obs_burn = obs_ph[:,:Lb]
+    obs_train = obs_ph[:,Lb:]
+
+    obs12_train = obs01_ph[:, Lb:-1]
+    # obs12_train = tf.transpose(obs12_train, perm=[1, 0])
+
+    a_ph = a_ph_all[:, Lb:]
+    r_ph = r_ph_all[:, Lb:]
+    d_ph = d_ph_all[:, Lb:]
+
+
+    _, state_burn_in = sac1_dynamic_rnn(obs_burn, hc_ph)
+    state_burn_in = tf.stop_gradient(state_burn_in) * obs01_ph[:,0][...,tf.newaxis]
+    s_outputs, _ = sac1_dynamic_rnn(obs_train, state_burn_in)
+    s_ph = s_outputs[:,:-1]
+    s2_ph = s_outputs[:,1:]
+
+    _, _, logp_pi, q1, q2, q1_pi, q2_pi = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
+    _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
+
+
+    for i in range(Lt):
+        # Main outputs from computation graph
+        with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
+            _[i], _[i], logp_pi[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:,0], a_ph[:,0], **ac_kwargs)
+
+        # Target value network
+        with tf.variable_scope('target', reuse=tf.AUTO_REUSE):
+            _[i], _[i], logp_pi_[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,0], a_ph[:,0], **ac_kwargs)
+
+    _, _, logp_pi, q1, q2, q1_pi, q2_pi = tf.stack(_), tf.stack(_), tf.stack(logp_pi,axis=1), tf.stack(q1,axis=1), tf.stack(q2,axis=1), tf.stack(q1_pi,axis=1), tf.stack(q2_pi,axis=1)
+    _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_,), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
+
+
+    ######################################
+
 
     # Experience buffer
     replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
-
+    replay_buffer_rnn = ReplayBuffer_RNN(Lb=10, Lt=10, hc_dim=128, obs_dim=obs_dim, act_dim=act_dim, size=10000)
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
                        ['main/pi', 'main/q1', 'main/q2', 'main'])
@@ -190,20 +279,21 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
     q_backup = r_ph + gamma * (1 - d_ph) * v_backup
 
     # Soft actor-critic losses
-    pi_loss = tf.reduce_mean(alpha * logp_pi - q1_pi)
-    q1_loss = 0.5 * tf.reduce_mean((q_backup - q1) ** 2)
-    q2_loss = 0.5 * tf.reduce_mean((q_backup - q2) ** 2)
+    pi_loss = tf.reduce_mean( obs12_train * (alpha * logp_pi - q1_pi) )
+    q1_loss = 0.5 * tf.reduce_mean( obs12_train *(q_backup - q1) ** 2 )
+    q2_loss = 0.5 * tf.reduce_mean( obs12_train *(q_backup - q2) ** 2)
     value_loss = q1_loss + q2_loss
 
     # Policy train op
     # (has to be separate from value train op, because q1_pi appears in pi_loss)
     pi_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    train_pi_op = pi_optimizer.minimize(pi_loss, var_list=get_vars('main/pi'))
+    pi_params = get_vars('main/pi')
+    train_pi_op = pi_optimizer.minimize(pi_loss, var_list=pi_params)
 
     # Value train op
     # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    value_params = get_vars('main/q')
+    value_params = get_vars('main/q') + get_vars('rnn')
     with tf.control_dependencies([train_pi_op]):
         train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
 
@@ -229,21 +319,41 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
     sess.run(tf.global_variables_initializer())
     sess.run(target_init)
 
+
+    # Inputs to computation graph
+    x_ph_geta, hc_ph_geta, a_ph_geta = core.placeholders((1,obs_dim), hc_dim, act_dim)
+
+    s_geta, hc_geta = sac1_dynamic_rnn(x_ph_geta, hc_ph_geta)
+    # Main outputs from computation graph
+    with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
+        mu, pi, _, _, _, _, _ = actor_critic(s_geta[:,0], a_ph_geta, **ac_kwargs)
+
     # Setup model saving
-    logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},
-                          outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
+    # logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},
+    #                       outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
 
-    def get_action(o, deterministic=False):
+    # def get_action(o, deterministic=False):
+    #     act_op = mu if deterministic else pi
+    #     return sess.run(act_op, feed_dict={x_ph_geta: o.reshape(1, -1)})[0]#[0]
+
+    def get_action(o, hc_0, deterministic=False):
+        """s_t_0_  starting step for testing 1 H"""
+
         act_op = mu if deterministic else pi
-        return sess.run(act_op, feed_dict={x_ph: o.reshape(1, -1)})[0]
+        action, hc_1 = sess.run([act_op, hc_geta], feed_dict={x_ph_geta: o.reshape(1, 1, obs_dim),
+                                                                hc_ph_geta: hc_0 })
+        return action[0], hc_1
 
-    def test_agent(n=25):
+    def test_agent(n=1):
+        print('test')
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
+            hc_run_test = np.zeros((1, 128,), dtype=np.float32)
             while not (d or (ep_len == max_ep_len_test)):
                 # Take deterministic actions at test time
-                o, r, d, _ = test_env.step(get_action(o, True))
+                a_test, hc_run_test = get_action(o, hc_run_test, True)
+                o, r, d, _ = test_env.step(a_test)
                 ep_ret += r
                 ep_len += 1
                 # test_env.render()
@@ -251,9 +361,27 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
 
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+    hc_run = np.zeros((1,128,), dtype=np.float32)
     total_steps = steps_per_epoch * epochs
 
     test_ep_ret = test_ep_ret_1 = -10000.0
+
+
+    ################################## deques
+
+    Lb = 10   # 'burn-in'
+    Lt = 10   # 'train'
+    obs_01_hc_queue = deque([], maxlen=Lb + Lt + 1)
+    a_r_d_queue = deque([], maxlen=Lb + Lt)
+
+    for _i in range(Lb):
+        obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
+        a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
+
+    obs_01_hc_queue.append((o, True, hc_run[0]))
+
+    ################################## deques
+
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -264,9 +392,11 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
         use the learned policy. 
         """
         if t > start_steps:
-            a = get_action(o)
+            a, hc_run = get_action(o, hc_run)
         else:
+            _a, hc_run = get_action(o, hc_run)
             a = env.action_space.sample()
+
 
         # Step the env
         o2, r, d, _ = env.step(a)
@@ -285,6 +415,25 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
         # most recent observation!
         o = o2
 
+
+        #################################### deques store
+
+        a_r_d_queue.append((a, r, d))
+        obs_01_hc_queue.append((o2, True, hc_run[0] ))
+        # obs_01_hc_queue.append((o2, True, s_t_1_[0]))
+
+        if (t+1) % Lb == 0:
+            replay_buffer_rnn.store(obs_01_hc_queue,a_r_d_queue)
+
+        if (d or (ep_len == max_ep_len_train)) and (t + 1) % Lb != 0:
+            for _0 in range(Lb - (t + 1) % Lb):
+                a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
+                obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
+            replay_buffer_rnn.store(obs_01_hc_queue, a_r_d_queue)
+
+        #################################### deques store
+
+
         # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len_train):
             """
@@ -293,12 +442,13 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
             original paper.
             """
             for j in range(ep_len):
-                batch = replay_buffer.sample_batch(batch_size)
-                feed_dict = {x_ph: batch['obs1'],
-                             x2_ph: batch['obs2'],
-                             a_ph: batch['acts'],
-                             r_ph: batch['rews'],
-                             d_ph: batch['done'],
+                batch = replay_buffer_rnn.sample_batch(batch_size)
+                feed_dict = {obs_ph: batch['obs'],
+                             obs01_ph: batch['obs01'],
+                             hc_ph: batch['hc'],
+                             a_ph_all: batch['acts'],
+                             r_ph_all: batch['rews'],
+                             d_ph_all: batch['done'],
                              }
                 # step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
@@ -308,27 +458,31 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
 
             logger.store(EpRet=ep_ret / reward_scale, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+            hc_run = np.zeros((1,128,), dtype=np.float32)
 
         # End of epoch wrap-up
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
-            if epoch > 2000:
-                test_agent(50)
-                test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
-                logger.epoch_dict['TestEpRet'] = []
-                print('TestEpRet', test_ep_ret_1)
+            # save best
+            # if epoch > 2000:
+            #     test_agent(50)
+            #     test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
+            #     logger.epoch_dict['TestEpRet'] = []
+            #     print('TestEpRet', test_ep_ret_1)
+
+            test_agent(5)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
             logger.log_tabular('EpRet', with_min_and_max=True)
 
-            # logger.log_tabular('TestEpRet', with_min_and_max=True)
+            logger.log_tabular('TestEpRet', with_min_and_max=True)
             # test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
 
             logger.log_tabular('EpLen', average_only=True)
-            # logger.log_tabular('TestEpLen', average_only=True)
+            logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha', average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=False)
@@ -369,6 +523,10 @@ if __name__ == '__main__':
     parser.add_argument('--obs_noise', type=float, default=0.0)
     parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2')
     parser.add_argument('--stack_frames', type=int, default=4)
+    parser.add_argument('--Lt', type=int, default=10)
+    parser.add_argument('--Lb', type=int, default=10)
+    parser.add_argument('--hc_dim', type=int, default=128)
+
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -408,8 +566,8 @@ if __name__ == '__main__':
     env3 = Wrapper(gym.make(args.env), 3)
     env1 = Wrapper(gym.make(args.env), 1)
 
-    sac1_rnn(lambda n: env3 if n == 3 else env1, actor_critic=core.mlp_actor_critic,
-         ac_kwargs=dict(hidden_sizes=[400, 300]),
+    sac1_rnn(lambda n: env3 if n == 3 else env1, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core.sac1_dynamic_rnn,
+         ac_kwargs=dict(hidden_sizes=[400, 300]),Lb=args.Lb, Lt=args.Lt, hc_dim=args.hc_dim,
          gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
          logger_kwargs=logger_kwargs, lr=args.lr, reward_scale=args.reward_scale,
          max_ep_len_train=args.max_ep_len_train, max_ep_len_test=args.max_ep_len_test)

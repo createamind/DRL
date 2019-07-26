@@ -3,12 +3,12 @@ import tensorflow as tf
 from numbers import Number
 import gym
 import time
-from spinup.algos.sac1_rnn import core
-from spinup.algos.sac1_rnn.core import get_vars, rnn_cell, rnn_gaussian_policy, apply_squashing_func
+from spinup.algos.sac1_rnn_d import core
+from spinup.algos.sac1_rnn_d.core import get_vars, rnn_cell, rnn_gaussian_policy, apply_squashing_func
 from spinup.utils.logx import EpochLogger
 import gym
 from gym.spaces import Box, Discrete, Tuple
-
+from collections import deque
 
 # seq_length = 17
 # seq_length = 20  # sequence length (timestep) T
@@ -18,6 +18,43 @@ from gym.spaces import Box, Discrete, Tuple
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
+
+
+class ReplayBuffer_RNN:
+    """
+    A simple FIFO experience replay buffer for SAC_RNN agents.
+    """
+
+    def __init__(self, Lb, Lt, hc_dim, obs_dim, act_dim, size):
+        self.buffer_obs = np.zeros([size, Lb+Lt+1, obs_dim], dtype=np.float32)
+        self.buffer_obs01  = np.zeros([size, Lb+Lt+1], dtype=np.float32)
+        self.buffer_hc  = np.zeros([size, 1, hc_dim], dtype=np.float32)
+        self.buffer_a = np.zeros([size, Lb+Lt, act_dim], dtype=np.float32)
+        self.buffer_r = np.zeros([size, Lb+Lt], dtype=np.float32)
+        self.buffer_d = np.zeros([size, Lb+Lt], dtype=np.float32)
+        self.ptr, self.size, self.max_size = 0, 0, size
+
+    def store(self, obs_01_hc_queue, a_r_d_queue):
+        obs, obs01, hc = np.stack(obs_01_hc_queue,axis=1)
+        self.buffer_obs[self.ptr] = np.array(list(obs),dtype=np.float32)
+        self.buffer_obs01[self.ptr] = np.array(list(obs01),dtype=np.float32)
+        self.buffer_hc[self.ptr] = np.array(list(hc),dtype=np.float32)[:1,]
+        a, r, d = np.stack(a_r_d_queue, axis=1)
+        self.buffer_a[self.ptr] = np.array(list(a),dtype=np.float32)
+        self.buffer_r[self.ptr] = np.array(list(r),dtype=np.float32)
+        self.buffer_d[self.ptr] = np.array(list(d),dtype=np.float32)
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
+
+    def sample_batch(self, batch_size=32):
+        idxs = np.random.randint(0, self.size, size=batch_size)
+        return dict(obs=self.buffer_obs[idxs],
+                    obs01=self.buffer_obs01[idxs],
+                    hc=self.buffer_hc[idxs],
+                    acts=self.buffer_a[idxs],
+                    rews=self.buffer_r[idxs],
+                    done=self.buffer_d[idxs])
+
 
 
 class ReplayBuffer:
@@ -37,6 +74,15 @@ class ReplayBuffer:
         self.rews_buf = np.zeros([size, 1], dtype=np.float32)
         self.done_buf = np.zeros([size, 1], dtype=np.float32)
         self.target_done_ratio = 0
+
+        self.buffer_obs = np.zeros([size, 10+10+1, obs_dim], dtype=np.float32)
+        self.buffer_01 = np.zeros([size, 10+10+1, 1], dtype=np.float32)
+        self.buffer_hc = np.zeros([size, 1, 128], dtype=np.float32)
+
+        self.buffer_a = np.zeros([size, 10+10, act_dim], dtype=np.float32)
+        self.buffer_r = np.zeros([size, 10+10, 1], dtype=np.float32)
+        self.buffer_d = np.zeros([size, 10+10, 1], dtype=np.float32)
+
 
     def store(self, obs, s_t_0, act, rew, done):
         self.obs1_buf[self.ptr] = obs
@@ -207,6 +253,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
     # Experience buffer
     replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size,
                                  h_size=h_size, seq_length=seq_length, flag="seq")
+    replay_buffer_rnn =ReplayBuffer_RNN(Lb=10, Lt=10, hc_dim=128, obs_dim=obs_dim, act_dim=act_dim, size=10000)
 
     # Count variables
     # var_counts = tuple(core.count_vars(scope) for scope in
@@ -316,6 +363,24 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
     s_t_0_ = np.zeros([1, h_size])
     episode = 0
 
+
+
+    ################################## deques
+
+    Lb = 10   # 'burn-in'
+    Lt = 10   # 'train'
+    obs_01_hc_queue = deque([], maxlen=Lb + Lt + 1)
+    a_r_d_queue = deque([], maxlen=Lb + Lt)
+
+    for _i in range(Lb):
+        obs_01_hc_queue.append((np.zeros((28,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
+        a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
+
+    obs_01_hc_queue.append((o, True, np.zeros((128,), dtype=np.float32)))
+
+    ################################## deques
+
+
     for t in range(total_steps):
 
         """
@@ -356,8 +421,27 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=
         # most recent observation!
         o = o2
 
+
+        #################################### deques store
+
+
+        a_r_d_queue.append((a, r, d))
+        obs_01_hc_queue.append((o2, True, s_t_1_[0]))
+
+        if (t+1) % Lb == 0:
+            replay_buffer_rnn.store(obs_01_hc_queue,a_r_d_queue)
+
+        if (d or (ep_len == max_ep_len)) and (t + 1) % Lb != 0:
+            for _0 in Lb - (t + 1) % Lb:
+                a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
+                obs_01_hc_queue.append((np.zeros((28,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
+            replay_buffer_rnn.store(obs_01_hc_queue, a_r_d_queue)
+
+        #################################### deques store
+
         # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len):
+
             """
             Perform all SAC updates at the end of the trajectory.
             This is a slight difference from the SAC specified in the
