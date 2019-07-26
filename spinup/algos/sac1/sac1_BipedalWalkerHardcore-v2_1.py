@@ -10,6 +10,11 @@ from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack
 
 
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.Session(config=config)
+
 class ReplayBuffer:
     """
     A simple FIFO experience replay buffer for SAC agents.
