@@ -250,7 +250,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
 
     # Experience buffer
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
+    # replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
     replay_buffer_rnn = ReplayBuffer_RNN(Lb=10, Lt=10, hc_dim=128, obs_dim=obs_dim, act_dim=act_dim, size=10000)
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
@@ -345,7 +345,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
         return action[0], hc_1
 
     def test_agent(n=1):
-        print('test')
+        # print('test')
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -409,7 +409,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
         # d = False if ep_len==max_ep_len_train else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d)
+        # replay_buffer.store(o, a, r, o2, d)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
