@@ -100,7 +100,7 @@ Soft Actor-Critic
 
 
 def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core.sac1_dynamic_rnn, ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128,
-         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, reward_scale=1.0,
+         steps_per_epoch=5000, epochs=100, replay_size=int(1e5), gamma=0.99, reward_scale=1.0,
          polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
          max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -257,7 +257,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
     # Experience buffer
     # replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
-    replay_buffer_rnn = ReplayBuffer_RNN(Lb=10, Lt=10, hc_dim=128, obs_dim=obs_dim, act_dim=act_dim, size=10000)
+    replay_buffer_rnn = ReplayBuffer_RNN(Lb=Lb, Lt=Lt, hc_dim=hc_dim, obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
                        ['main/pi', 'main/q1', 'main/q2', 'main'])
