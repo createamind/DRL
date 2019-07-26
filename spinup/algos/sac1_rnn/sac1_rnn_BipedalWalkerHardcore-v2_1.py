@@ -242,11 +242,11 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     for i in range(Lt):
         # Main outputs from computation graph
         with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
-            _[i], _[i], logp_pi[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:,0], a_ph[:,0], **ac_kwargs)
+            _[i], _[i], logp_pi[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:,i], a_ph[:,i], **ac_kwargs)
 
         # Target value network
         with tf.variable_scope('target', reuse=tf.AUTO_REUSE):
-            _[i], _[i], logp_pi_[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,0], a_ph[:,0], **ac_kwargs)
+            _[i], _[i], logp_pi_[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,i], a_ph[:,i], **ac_kwargs)
 
     _, _, logp_pi, q1, q2, q1_pi, q2_pi = tf.stack(_), tf.stack(_), tf.stack(logp_pi,axis=1), tf.stack(q1,axis=1), tf.stack(q2,axis=1), tf.stack(q1_pi,axis=1), tf.stack(q2_pi,axis=1)
     _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_,), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
