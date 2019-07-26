@@ -375,8 +375,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
     ################################## deques
 
-    Lb = 10   # 'burn-in'
-    Lt = 10   # 'train'
     obs_01_hc_queue = deque([], maxlen=Lb + Lt + 1)
     a_r_d_queue = deque([], maxlen=Lb + Lt)
 
@@ -529,8 +527,8 @@ if __name__ == '__main__':
     parser.add_argument('--obs_noise', type=float, default=0.0)
     parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2')
     parser.add_argument('--stack_frames', type=int, default=4)
-    parser.add_argument('--Lt', type=int, default=10)
-    parser.add_argument('--Lb', type=int, default=10)
+    parser.add_argument('--Lt', type=int, default=10)  # 'train'
+    parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
     parser.add_argument('--hc_dim', type=int, default=128)
 
     args = parser.parse_args()

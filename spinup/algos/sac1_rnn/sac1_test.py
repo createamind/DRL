@@ -51,7 +51,7 @@ if __name__ == '__main__':
     parser.add_argument('--render', type=bool, default=False)
     args = parser.parse_args()
 
-    file_model = '/home/liu/project/DRL/data/biped_sac1_stump6_actnoise0.3_alphaauto_2/biped_sac1_stump6_actnoise0.3_alphaauto_2_s0'
+    file_model = '/home/liu/project/DRL/data/315biped_sac1_stump6_actnoise0.3_alphaauto_2/biped_sac1_stump6_actnoise0.3_alphaauto_2_s0'
     print(file_model)
 
     _env, get_action = load_policy(file_model, deterministic=True)
