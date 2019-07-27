@@ -181,7 +181,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi)
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi_)
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
