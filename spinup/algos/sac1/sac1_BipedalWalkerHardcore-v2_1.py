@@ -258,7 +258,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
     total_steps = steps_per_epoch * epochs
 
-    test_ep_ret = test_ep_ret_1 = -10000.0
+    test_ep_ret_best = test_ep_ret = -10000.0
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -320,9 +320,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
             if epoch > 2000:
                 test_agent(50)
-                test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
+                test_ep_ret = logger.get_stats('TestEpRet')[0]
                 logger.epoch_dict['TestEpRet'] = []
-                print('TestEpRet', test_ep_ret_1)
+                print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
@@ -330,7 +330,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('EpRet', with_min_and_max=True)
 
             # logger.log_tabular('TestEpRet', with_min_and_max=True)
-            # test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
+            # test_ep_ret = logger.get_stats('TestEpRet')[0]
 
             logger.log_tabular('EpLen', average_only=True)
             # logger.log_tabular('TestEpLen', average_only=True)
@@ -348,10 +348,10 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.dump_tabular()
 
             # Save model
-            if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and (test_ep_ret_1 > test_ep_ret):
+            if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and (test_ep_ret > test_ep_ret_best):
                 logger.save_state({'env': env}, None)
+                test_ep_ret_best = test_ep_ret
 
-            test_ep_ret = test_ep_ret_1
 
 
 if __name__ == '__main__':
