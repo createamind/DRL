@@ -48,10 +48,10 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
-    parser.add_argument('--render', type=bool, default=False)
+    parser.add_argument('--render', type=bool, default=True)
     args = parser.parse_args()
 
-    file_model = '/home/liu/project/DRL/saved_models/biped_sac1_actnoise0.3_stump_0.6/biped_sac1_actnoise0.3_stump_0.6_s0'
+    file_model = '/home/liu/project/DRL/saved_models/biped_sac1_stump6_actnoise0.3_alphaauto_2/biped_sac1_stump6_actnoise0.3_alphaauto_2_s0'
     print(file_model)
 
     _env, get_action = load_policy(file_model, deterministic=True)

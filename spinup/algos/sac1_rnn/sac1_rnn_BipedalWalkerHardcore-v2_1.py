@@ -492,7 +492,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
             #     logger.epoch_dict['TestEpRet'] = []
             #     print('TestEpRet', test_ep_ret_1)
 
-            test_agent(25)
+            test_agent(1)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
