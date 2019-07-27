@@ -56,33 +56,33 @@ class ReplayBuffer_RNN:
 
     def __init__(self, Lb, Lt, hc_dim, obs_dim, act_dim, size):
         self.buffer_obs = np.zeros([size, Lb+Lt+1, obs_dim], dtype=np.float32)
-        self.buffer_obs01  = np.zeros([size, Lb+Lt+1], dtype=np.float32)
         self.buffer_hc  = np.zeros([size, hc_dim], dtype=np.float32)
         self.buffer_a = np.zeros([size, Lb+Lt, act_dim], dtype=np.float32)
         self.buffer_r = np.zeros([size, Lb+Lt], dtype=np.float32)
         self.buffer_d = np.zeros([size, Lb+Lt], dtype=np.float32)
+        self.buffer_data01 = np.zeros([size, Lb+Lt], dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs_01_hc_queue, a_r_d_queue):
-        obs, obs01, hc = np.stack(obs_01_hc_queue,axis=1)
+    def store(self, obs_hc_queue, a_r_d_data01_queue):
+        obs, hc = np.stack(obs_hc_queue,axis=1)
         self.buffer_obs[self.ptr] = np.array(list(obs),dtype=np.float32)
-        self.buffer_obs01[self.ptr] = np.array(list(obs01),dtype=np.float32)
         self.buffer_hc[self.ptr] = np.array(list(hc),dtype=np.float32)[0]
-        a, r, d = np.stack(a_r_d_queue, axis=1)
+        a, r, d, data01= np.stack(a_r_d_data01_queue, axis=1)
         self.buffer_a[self.ptr] = np.array(list(a),dtype=np.float32)
         self.buffer_r[self.ptr] = np.array(list(r),dtype=np.float32)
         self.buffer_d[self.ptr] = np.array(list(d),dtype=np.float32)
+        self.buffer_data01[self.ptr] = np.array(list(data01), dtype=np.float32)
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
 
     def sample_batch(self, batch_size=32):
         idxs = np.random.randint(0, self.size, size=batch_size)
         return dict(obs=self.buffer_obs[idxs],
-                    obs01=self.buffer_obs01[idxs],
                     hc=self.buffer_hc[idxs],
                     acts=self.buffer_a[idxs],
                     rews=self.buffer_r[idxs],
-                    done=self.buffer_d[idxs])
+                    done=self.buffer_d[idxs],
+                    data01=self.buffer_data01[idxs],)
 
 
 
@@ -100,7 +100,7 @@ Soft Actor-Critic
 
 
 def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core.sac1_dynamic_rnn, ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128,
-         steps_per_epoch=500, epochs=100, replay_size=int(1e5), gamma=0.99, reward_scale=1.0,
+         steps_per_epoch=5000, epochs=100, replay_size=int(1e5), gamma=0.99, reward_scale=1.0,
          polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
          max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -215,13 +215,13 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
     ######################################
 
-    obs_ph, obs01_ph, hc_ph = core.placeholders((Lb+Lt+1, obs_dim), (Lb+Lt+1,), (hc_dim,))
-    a_ph_all, r_ph_all, d_ph_all = core.placeholders((Lb+Lt, act_dim), (Lb+Lt,), (Lb+Lt,))
+    obs_ph, hc_ph = core.placeholders((Lb+Lt+1, obs_dim), (hc_dim,))
+    a_ph_all, r_ph_all, d_ph_all, data01_ph = core.placeholders((Lb+Lt, act_dim), (Lb+Lt,), (Lb+Lt,), (Lb+Lt,))
 
     obs_burn = obs_ph[:,:Lb]
     obs_train = obs_ph[:,Lb:]
 
-    obs12_train = obs01_ph[:, Lb:-1]
+    obs12_train = data01_ph[:, Lb:]
     # obs12_train = tf.transpose(obs12_train, perm=[1, 0])
 
     a_ph = a_ph_all[:, Lb:]
@@ -230,7 +230,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
 
     _, state_burn_in = sac1_dynamic_rnn(obs_burn, hc_ph)
-    state_burn_in = tf.stop_gradient(state_burn_in) * obs01_ph[:,0][...,tf.newaxis]
+    state_burn_in = tf.stop_gradient(state_burn_in) * data01_ph[:,0][...,tf.newaxis]
     s_outputs, _ = sac1_dynamic_rnn(obs_train, state_burn_in)
     s_ph = s_outputs[:,:-1]
     s2_ph = s_outputs[:,1:]
@@ -367,8 +367,8 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
     ################################## deques
 
-    obs_01_hc_queue = deque([], maxlen=Lb + Lt + 1)
-    a_r_d_queue = deque([], maxlen=Lb + Lt)
+    obs_hc_queue = deque([], maxlen=Lb + Lt + 1)
+    a_r_d_data01_queue = deque([], maxlen=Lb + Lt)
 
     ################################## deques
 
@@ -381,9 +381,9 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     t_queue = 1
     hc_run = np.zeros((1,128,), dtype=np.float32)
     for _i in range(Lb):
-        obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
-        a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
-    obs_01_hc_queue.append((o, True, hc_run[0]))
+        obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
+        a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+    obs_hc_queue.append((o, hc_run[0]))
 
     ################################## deques reset
 
@@ -427,18 +427,17 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
         #################################### deques store
 
-        episode_end = not (d or (ep_len == max_ep_len_train))
-        a_r_d_queue.append((a, r, d))
-        obs_01_hc_queue.append((o2, episode_end, hc_run[0] ))
+        a_r_d_data01_queue.append((a, r, d, True))
+        obs_hc_queue.append((o2, hc_run[0]))
 
         if t_queue % Lt == 0:
-            replay_buffer_rnn.store(obs_01_hc_queue,a_r_d_queue)
+            replay_buffer_rnn.store(obs_hc_queue,a_r_d_data01_queue)
 
         if (d or (ep_len == max_ep_len_train)) and t_queue % Lt != 0:
             for _0 in range(Lt - t_queue % Lt):
-                a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
-                obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
-            replay_buffer_rnn.store(obs_01_hc_queue, a_r_d_queue)
+                a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+                obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
+            replay_buffer_rnn.store(obs_hc_queue, a_r_d_data01_queue)
 
         t_queue += 1
 
@@ -455,11 +454,11 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
             for j in range(ep_len):
                 batch = replay_buffer_rnn.sample_batch(batch_size)
                 feed_dict = {obs_ph: batch['obs'],
-                             obs01_ph: batch['obs01'],
                              hc_ph: batch['hc'],
                              a_ph_all: batch['acts'],
                              r_ph_all: batch['rews'],
                              d_ph_all: batch['done'],
+                             data01_ph: batch['data01']
                              }
                 # step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
@@ -474,9 +473,9 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
             t_queue = 1
             hc_run = np.zeros((1, 128,), dtype=np.float32)
             for _i in range(Lb):
-                obs_01_hc_queue.append((np.zeros((24,), dtype=np.float32), False, np.zeros((128,), dtype=np.float32)))
-                a_r_d_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False))
-            obs_01_hc_queue.append((o, True, hc_run[0]))
+                obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
+                a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+            obs_hc_queue.append((o, hc_run[0]))
 
             ################################## deques reset
 
