@@ -318,22 +318,24 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
-            if epoch > 2000:
+
+            if epoch < 2000:
+                test_agent(1)
+                # test_ep_ret = logger.get_stats('TestEpRet')[0]
+                # print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
+            else:
                 test_agent(50)
                 test_ep_ret = logger.get_stats('TestEpRet')[0]
-                logger.epoch_dict['TestEpRet'] = []
+                # logger.epoch_dict['TestEpRet'] = []
                 print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
             logger.log_tabular('EpRet', with_min_and_max=True)
-
-            # logger.log_tabular('TestEpRet', with_min_and_max=True)
-            # test_ep_ret = logger.get_stats('TestEpRet')[0]
-
+            logger.log_tabular('TestEpRet', with_min_and_max=True)
             logger.log_tabular('EpLen', average_only=True)
-            # logger.log_tabular('TestEpLen', average_only=True)
+            logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha', average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=False)
@@ -372,7 +374,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2')
+    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2_debug')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 
