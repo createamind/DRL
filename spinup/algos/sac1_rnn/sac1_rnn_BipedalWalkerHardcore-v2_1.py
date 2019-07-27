@@ -260,9 +260,10 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     replay_buffer_rnn = ReplayBuffer_RNN(Lb=Lb, Lt=Lt, hc_dim=hc_dim, obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
-                       ['main/pi', 'main/q1', 'main/q2', 'main'])
+                       ['main/pi', 'main/q1', 'main/q2', 'rnn'])
     print(('\nNumber of parameters: \t pi: %d, \t' + \
-           'q1: %d, \t q2: %d, \t total: %d\n') % var_counts)
+           'q1: %d, \t q2: %d, \t rnn: %d\n') % var_counts)
+    print(('Number of parameters: \t Total: %d\n') % sum(var_counts) )
 
     ######
     if alpha == 'auto':
