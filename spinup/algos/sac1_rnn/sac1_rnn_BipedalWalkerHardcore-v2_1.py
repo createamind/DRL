@@ -235,21 +235,21 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     s_ph = s_outputs[:,:-1]
     s2_ph = s_outputs[:,1:]
 
-    _, _, logp_pi, q1, q2, q1_pi, q2_pi = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
-    _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
+    _, _, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
+    _, _, logp_pi_, _,  _, _, q1_pi_, q2_pi_ = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
 
 
     for i in range(Lt):
         # Main outputs from computation graph
         with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
-            _[i], _[i], logp_pi[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:,i], a_ph[:,i], **ac_kwargs)
+            _[i], _[i], logp_pi[i], logp_pi2[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:,i], s2_ph[:,i], a_ph[:,i], **ac_kwargs)
 
         # Target value network
         with tf.variable_scope('target', reuse=tf.AUTO_REUSE):
-            _[i], _[i], logp_pi_[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,i], a_ph[:,i], **ac_kwargs)
+            _[i], _[i], logp_pi_[i], _[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,i], s2_ph[:,i], a_ph[:,i], **ac_kwargs)
 
-    _, _, logp_pi, q1, q2, q1_pi, q2_pi = tf.stack(_), tf.stack(_), tf.stack(logp_pi,axis=1), tf.stack(q1,axis=1), tf.stack(q2,axis=1), tf.stack(q1_pi,axis=1), tf.stack(q2_pi,axis=1)
-    _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
+    _, _, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = tf.stack(_), tf.stack(_), tf.stack(logp_pi,axis=1), tf.stack(logp_pi2,axis=1), tf.stack(q1,axis=1), tf.stack(q2,axis=1), tf.stack(q1_pi,axis=1), tf.stack(q2_pi,axis=1)
+    _, _, logp_pi_, _, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
 
 
     ######################################
@@ -282,7 +282,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi_)
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)
     q_backup = r_ph + gamma * (1 - d_ph) * v_backup
 
     # Soft actor-critic losses
@@ -333,7 +333,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     s_geta, hc_geta = sac1_dynamic_rnn(x_ph_geta, hc_ph_geta)
     # Main outputs from computation graph
     with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
-        mu, pi, _, _, _, _, _ = actor_critic(s_geta[:,0], a_ph_geta, **ac_kwargs)
+        mu, pi, _, _, _, _, _, _ = actor_critic(s_geta[:,0], s_geta[:,0], a_ph_geta, **ac_kwargs)
 
     # Setup model saving
     # logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},

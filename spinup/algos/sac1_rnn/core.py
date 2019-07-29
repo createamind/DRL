@@ -87,13 +87,16 @@ def apply_squashing_func(mu, pi, logp_pi):
 """
 Actor-Critics
 """
-def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu, 
+def mlp_actor_critic(x, x2, a, hidden_sizes=(400,300), activation=tf.nn.relu,
                      output_activation=None, policy=mlp_gaussian_policy, action_space=None):
     # policy
     with tf.variable_scope('pi', reuse=tf.AUTO_REUSE):
         mu, pi, logp_pi = policy(x, a, hidden_sizes, activation, output_activation)
         # mu, pi, logp_pi = tf.stop_gradient(policy(x, a, hidden_sizes, activation, output_activation))
         mu, pi, logp_pi = apply_squashing_func(mu, pi, logp_pi)
+    with tf.variable_scope('pi', reuse=True):
+        mu2, pi2, logp_pi2 = policy(x2, a, hidden_sizes, activation, output_activation)
+        mu2, pi2, logp_pi2 = apply_squashing_func(mu2, pi2, logp_pi2)
 
     # make sure actions are in correct range
     action_scale = action_space.high[0]
@@ -112,7 +115,7 @@ def mlp_actor_critic(x, a, hidden_sizes=(400,300), activation=tf.nn.relu,
     with tf.variable_scope('q2', reuse=True):
         q2_pi = vf_mlp(tf.concat([x,pi], axis=-1))
 
-    return mu, pi, logp_pi, q1, q2, q1_pi, q2_pi
+    return mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi
 
 
 
