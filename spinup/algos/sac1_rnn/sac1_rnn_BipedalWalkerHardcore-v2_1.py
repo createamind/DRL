@@ -272,7 +272,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
 
-        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr * 0.1, name='alpha_optimizer')
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr * h0, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
     ######
 
@@ -348,7 +348,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
                                                               hc_ph_geta: hc_0})
         return action[0], hc_1
 
-    def test_agent(n=1):
+    def test_agent(n=5):
         # print('test')
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
@@ -487,11 +487,12 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
             #     logger.epoch_dict['TestEpRet'] = []
             #     print('TestEpRet', test_ep_ret_1)
 
-            test_agent(10)
+            test_agent(25)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
             logger.log_tabular('Epoch', epoch)
+            logger.log_tabular('Name', name)
             logger.log_tabular('EpRet', with_min_and_max=True)
 
             logger.log_tabular('TestEpRet', with_min_and_max=True)
@@ -524,7 +525,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
-    parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
+    parser.add_argument('--max_ep_len_test', type=int, default=400)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--hid', type=int, default=300)
@@ -546,7 +547,7 @@ if __name__ == '__main__':
     parser.add_argument('--h0', type=float, default=1.0)  # for alpha learning rate decay
     # parser.add_argument('--epochs', type=int, default=1000)
     # parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
+    name = 'main_logp_pi2_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
         parser.parse_args().env,
         parser.parse_args().Lt,
         # parser.parse_args().hid1,
