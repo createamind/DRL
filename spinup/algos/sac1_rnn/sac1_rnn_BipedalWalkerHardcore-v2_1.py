@@ -10,7 +10,6 @@ from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack
 from collections import deque
 
-
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
@@ -47,30 +46,28 @@ class ReplayBuffer:
                     done=self.done_buf[idxs])
 
 
-
-
 class ReplayBuffer_RNN:
     """
     A simple FIFO experience replay buffer for SAC_RNN agents.
     """
 
     def __init__(self, Lb, Lt, hc_dim, obs_dim, act_dim, size):
-        self.buffer_obs = np.zeros([size, Lb+Lt+1, obs_dim], dtype=np.float32)
-        self.buffer_hc  = np.zeros([size, hc_dim], dtype=np.float32)
-        self.buffer_a = np.zeros([size, Lb+Lt, act_dim], dtype=np.float32)
-        self.buffer_r = np.zeros([size, Lb+Lt], dtype=np.float32)
-        self.buffer_d = np.zeros([size, Lb+Lt], dtype=np.float32)
-        self.buffer_data01 = np.zeros([size, Lb+Lt], dtype=np.float32)
+        self.buffer_obs = np.zeros([size, Lb + Lt + 1, obs_dim], dtype=np.float32)
+        self.buffer_hc = np.zeros([size, hc_dim], dtype=np.float32)
+        self.buffer_a = np.zeros([size, Lb + Lt, act_dim], dtype=np.float32)
+        self.buffer_r = np.zeros([size, Lb + Lt], dtype=np.float32)
+        self.buffer_d = np.zeros([size, Lb + Lt], dtype=np.float32)
+        self.buffer_data01 = np.zeros([size, Lb + Lt], dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, obs_hc_queue, a_r_d_data01_queue):
-        obs, hc = np.stack(obs_hc_queue,axis=1)
-        self.buffer_obs[self.ptr] = np.array(list(obs),dtype=np.float32)
-        self.buffer_hc[self.ptr] = np.array(list(hc),dtype=np.float32)[0]
-        a, r, d, data01= np.stack(a_r_d_data01_queue, axis=1)
-        self.buffer_a[self.ptr] = np.array(list(a),dtype=np.float32)
-        self.buffer_r[self.ptr] = np.array(list(r),dtype=np.float32)
-        self.buffer_d[self.ptr] = np.array(list(d),dtype=np.float32)
+        obs, hc = np.stack(obs_hc_queue, axis=1)
+        self.buffer_obs[self.ptr] = np.array(list(obs), dtype=np.float32)
+        self.buffer_hc[self.ptr] = np.array(list(hc), dtype=np.float32)[0]
+        a, r, d, data01 = np.stack(a_r_d_data01_queue, axis=1)
+        self.buffer_a[self.ptr] = np.array(list(a), dtype=np.float32)
+        self.buffer_r[self.ptr] = np.array(list(r), dtype=np.float32)
+        self.buffer_d[self.ptr] = np.array(list(d), dtype=np.float32)
         self.buffer_data01[self.ptr] = np.array(list(data01), dtype=np.float32)
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
@@ -82,9 +79,7 @@ class ReplayBuffer_RNN:
                     acts=self.buffer_a[idxs],
                     rews=self.buffer_r[idxs],
                     done=self.buffer_d[idxs],
-                    data01=self.buffer_data01[idxs],)
-
-
+                    data01=self.buffer_data01[idxs], )
 
 
 """
@@ -99,10 +94,11 @@ Soft Actor-Critic
 """
 
 
-def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core.sac1_dynamic_rnn, ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128,
-         steps_per_epoch=5000, epochs=100, replay_size=int(1e5), gamma=0.99, reward_scale=1.0,
-         polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
-         max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
+def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.sac1_dynamic_rnn,
+             ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128, steps_per_epoch=5000, epochs=100,
+             replay_size=int(1e5), gamma=0.99, reward_scale=1.0, polyak=0.995, lr=5e-4, alpha=0.2,
+             h0=1.0, batch_size=100, start_steps=10000, max_ep_len_train=1000, max_ep_len_test=1000,
+             logger_kwargs=dict(), save_freq=1):
     """
 
     Args:
@@ -198,7 +194,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
-
     ######################################
     # Inputs to computation graph
     # x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders(obs_dim, act_dim, obs_dim, None, None)
@@ -215,11 +210,11 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
     ######################################
 
-    obs_ph, hc_ph = core.placeholders((Lb+Lt+1, obs_dim), (hc_dim,))
-    a_ph_all, r_ph_all, d_ph_all, data01_ph = core.placeholders((Lb+Lt, act_dim), (Lb+Lt,), (Lb+Lt,), (Lb+Lt,))
+    obs_ph, hc_ph = core.placeholders((Lb + Lt + 1, obs_dim), (hc_dim,))
+    a_ph_all, r_ph_all, d_ph_all, data01_ph = core.placeholders((Lb + Lt, act_dim), (Lb + Lt,), (Lb + Lt,), (Lb + Lt,))
 
-    obs_burn = obs_ph[:,:Lb]
-    obs_train = obs_ph[:,Lb:]
+    obs_burn = obs_ph[:, :Lb]
+    obs_train = obs_ph[:, Lb:]
 
     obs12_train = data01_ph[:, Lb:]
     # obs12_train = tf.transpose(obs12_train, perm=[1, 0])
@@ -228,42 +223,45 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     r_ph = r_ph_all[:, Lb:]
     d_ph = d_ph_all[:, Lb:]
 
-
     _, state_burn_in = sac1_dynamic_rnn(obs_burn, hc_ph)
-    state_burn_in = tf.stop_gradient(state_burn_in) * data01_ph[:,0][...,tf.newaxis]
+    state_burn_in = tf.stop_gradient(state_burn_in) * data01_ph[:, 0][..., tf.newaxis]
     s_outputs, _ = sac1_dynamic_rnn(obs_train, state_burn_in)
-    s_ph = s_outputs[:,:-1]
-    s2_ph = s_outputs[:,1:]
+    s_ph = s_outputs[:, :-1]
+    s2_ph = s_outputs[:, 1:]
 
-    _, _, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
-    _, _, logp_pi_, _,  _, _, q1_pi_, q2_pi_ = [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt, [None,]*Lt
-
+    _, _, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [
+        None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
+    _, _, logp_pi_, _, _, _, q1_pi_, q2_pi_ = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [
+        None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
 
     for i in range(Lt):
         # Main outputs from computation graph
         with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
-            _[i], _[i], logp_pi[i], logp_pi2[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:,i], s2_ph[:,i], a_ph[:,i], **ac_kwargs)
+            _, _, logp_pi[i], logp_pi2[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:, i],
+                                                                                           s2_ph[:, i],
+                                                                                           a_ph[:, i],
+                                                                                           **ac_kwargs)
 
         # Target value network
         with tf.variable_scope('target', reuse=tf.AUTO_REUSE):
-            _[i], _[i], logp_pi_[i], _[i], _[i], _[i], q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:,i], s2_ph[:,i], a_ph[:,i], **ac_kwargs)
+            _, _, logp_pi_[i], _, _, _, q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:, i], s2_ph[:, i], a_ph[:, i],
+                                                                            **ac_kwargs)
 
-    _, _, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = tf.stack(_), tf.stack(_), tf.stack(logp_pi,axis=1), tf.stack(logp_pi2,axis=1), tf.stack(q1,axis=1), tf.stack(q2,axis=1), tf.stack(q1_pi,axis=1), tf.stack(q2_pi,axis=1)
-    _, _, logp_pi_, _, _, _, q1_pi_, q2_pi_ = tf.stack(_), tf.stack(_), tf.stack(logp_pi_,axis=1), tf.stack(_), tf.stack(_), tf.stack(_), tf.stack(q1_pi_,axis=1), tf.stack(q2_pi_,axis=1)
-
+    logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = tf.stack(logp_pi, axis=1), tf.stack(logp_pi2, axis=1), \
+                            tf.stack(q1, axis=1), tf.stack(q2, axis=1), tf.stack(q1_pi, axis=1), tf.stack(q2_pi, axis=1)
+    logp_pi_, q1_pi_, q2_pi_ = tf.stack(logp_pi_, axis=1), tf.stack(q1_pi_, axis=1), tf.stack(q2_pi_, axis=1)
 
     ######################################
 
-
     # Experience buffer
     # replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
-    replay_buffer_rnn = ReplayBuffer_RNN(Lb=Lb, Lt=Lt, hc_dim=hc_dim, obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
+    replay_buffer_rnn = ReplayBuffer_RNN(Lb=Lb, Lt=Lt, hc_dim=hc_dim, obs_dim=obs_dim, act_dim=act_dim,
+                                         size=replay_size)
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
                        ['main/pi', 'main/q1', 'main/q2', 'rnn'])
-    print(('\nNumber of parameters: \t pi: %d, \t' + \
-           'q1: %d, \t q2: %d, \t rnn: %d\n') % var_counts)
-    print(('Number of parameters: \t Total: %d\n') % sum(var_counts) )
+    print(('\nNumber of parameters: \t pi: %d, \t' + 'q1: %d, \t q2: %d, \t rnn: %d\n') % var_counts)
+    print('Number of parameters: \t Total: %d\n' % sum(var_counts))
 
     ######
     if alpha == 'auto':
@@ -286,9 +284,9 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     q_backup = r_ph + gamma * (1 - d_ph) * v_backup
 
     # Soft actor-critic losses
-    pi_loss = tf.reduce_mean( obs12_train * (alpha * logp_pi - q1_pi) )
-    q1_loss = 0.5 * tf.reduce_mean( obs12_train *(q_backup - q1) ** 2 )
-    q2_loss = 0.5 * tf.reduce_mean( obs12_train *(q_backup - q2) ** 2)
+    pi_loss = tf.reduce_mean(obs12_train * (alpha * logp_pi - q1_pi))
+    q1_loss = 0.5 * tf.reduce_mean(obs12_train * (q_backup - q1) ** 2)
+    q2_loss = 0.5 * tf.reduce_mean(obs12_train * (q_backup - q2) ** 2)
     value_loss = q1_loss + q2_loss
 
     # Policy train op
@@ -326,14 +324,13 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     sess.run(tf.global_variables_initializer())
     sess.run(target_init)
 
-
     # Inputs to computation graph
-    x_ph_geta, hc_ph_geta, a_ph_geta = core.placeholders((1,obs_dim), hc_dim, act_dim)
+    x_ph_geta, hc_ph_geta, a_ph_geta = core.placeholders((1, obs_dim), hc_dim, act_dim)
 
     s_geta, hc_geta = sac1_dynamic_rnn(x_ph_geta, hc_ph_geta)
     # Main outputs from computation graph
     with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
-        mu, pi, _, _, _, _, _, _ = actor_critic(s_geta[:,0], s_geta[:,0], a_ph_geta, **ac_kwargs)
+        mu, pi, _, _, _, _, _, _ = actor_critic(s_geta[:, 0], s_geta[:, 0], a_ph_geta, **ac_kwargs)
 
     # Setup model saving
     # logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},
@@ -348,7 +345,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
         act_op = mu if deterministic else pi
         action, hc_1 = sess.run([act_op, hc_geta], feed_dict={x_ph_geta: o.reshape(1, 1, obs_dim),
-                                                                hc_ph_geta: hc_0 })
+                                                              hc_ph_geta: hc_0})
         return action[0], hc_1
 
     def test_agent(n=1):
@@ -373,14 +370,13 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
     ################################## deques
 
-
     start_time = time.time()
 
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
     ################################## deques reset
     t_queue = 1
-    hc_run = np.zeros((1,128,), dtype=np.float32)
+    hc_run = np.zeros((1, 128,), dtype=np.float32)
     for _i in range(Lb):
         obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
         a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
@@ -391,7 +387,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
     total_steps = steps_per_epoch * epochs
 
     test_ep_ret = test_ep_ret_1 = -10000.0
-
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -406,7 +401,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
         else:
             _a, hc_run = get_action(o, hc_run)
             a = env.action_space.sample()
-
 
         # Step the env
         o2, r, d, _ = env.step(a)
@@ -425,14 +419,13 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
         # most recent observation!
         o = o2
 
-
         #################################### deques store
 
         a_r_d_data01_queue.append((a, r, d, True))
         obs_hc_queue.append((o2, hc_run[0]))
 
         if t_queue % Lt == 0:
-            replay_buffer_rnn.store(obs_hc_queue,a_r_d_data01_queue)
+            replay_buffer_rnn.store(obs_hc_queue, a_r_d_data01_queue)
 
         if (d or (ep_len == max_ep_len_train)) and t_queue % Lt != 0:
             for _0 in range(Lt - t_queue % Lt):
@@ -443,7 +436,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
         t_queue += 1
 
         #################################### deques store
-
 
         # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len_train):
@@ -463,8 +455,12 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
                              }
                 # step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
                 outs = sess.run(step_ops, feed_dict)
-                logger.store(LossPi=outs[0], LossQ1=outs[1], LossQ2=outs[2],
-                             Q1Vals=outs[3][:,0], Q2Vals=outs[4][:,0],LogPi=outs[5][:,0],
+                logger.store(LossPi=outs[0],
+                             LossQ1=outs[1],
+                             LossQ2=outs[2],
+                             Q1Vals=outs[3][:, 0],
+                             Q2Vals=outs[4][:, 0],
+                             LogPi=outs[5][:, 0],
                              Alpha=outs[6])
 
             logger.store(EpRet=ep_ret / reward_scale, EpLen=ep_len)
@@ -480,7 +476,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
 
             ################################## deques reset
 
-
         # End of epoch wrap-up
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
@@ -492,7 +487,7 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core
             #     logger.epoch_dict['TestEpRet'] = []
             #     print('TestEpRet', test_ep_ret_1)
 
-            test_agent(1)
+            test_agent(10)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
@@ -542,12 +537,30 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2_debug')
+    # parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2_debug')
     parser.add_argument('--act_repeate', type=int, default=3)
     parser.add_argument('--Lt', type=int, default=10)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
     parser.add_argument('--hc_dim', type=int, default=128)
-
+    # parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--h0', type=float, default=1.0)  # for alpha learning rate decay
+    # parser.add_argument('--epochs', type=int, default=1000)
+    # parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
+    name = 'sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
+        parser.parse_args().env,
+        parser.parse_args().Lt,
+        # parser.parse_args().hid1,
+        # parser.parse_args().hid2,
+        # parser.parse_args().state,
+        # parser.parse_args().flag,
+        parser.parse_args().h0,
+        parser.parse_args().alpha,
+        parser.parse_args().seed)
+    # parser.parse_args().beta,
+    # parser.parse_args().tm,
+    # parser.parse_args().repeat,
+    # parser.parse_args().ps)
+    parser.add_argument('--exp_name', type=str, default=name)
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -607,9 +620,20 @@ if __name__ == '__main__':
     env_train = Wrapper_train(gym.make(args.env), args.act_repeate)
     env_test = Wrapper_test(gym.make(args.env), args.act_repeate)
 
-    sac1_rnn(lambda x: env_train if x == 'train' else env_test, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn = core.sac1_dynamic_rnn,
-         ac_kwargs=dict(hidden_sizes=[400, 300]),Lb=args.Lb, Lt=args.Lt, hc_dim=args.hc_dim,
-         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
-         logger_kwargs=logger_kwargs, lr=args.lr, reward_scale=args.reward_scale,
-         max_ep_len_train=args.max_ep_len_train, max_ep_len_test=args.max_ep_len_test)
-
+    sac1_rnn(lambda x: env_train if x == 'train' else env_test,
+             actor_critic=core.mlp_actor_critic,
+             sac1_dynamic_rnn=core.sac1_dynamic_rnn,
+             ac_kwargs=dict(hidden_sizes=[400, 300]),
+             Lb=args.Lb,
+             Lt=args.Lt,
+             hc_dim=args.hc_dim,
+             gamma=args.gamma,
+             seed=args.seed,
+             epochs=args.epochs,
+             alpha=args.alpha,
+             h0=args.h0,
+             logger_kwargs=logger_kwargs,
+             lr=args.lr,
+             reward_scale=args.reward_scale,
+             max_ep_len_train=args.max_ep_len_train,
+             max_ep_len_test=args.max_ep_len_test)
