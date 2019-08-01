@@ -13,7 +13,7 @@ from collections import deque
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
-
+import os
 
 class ReplayBuffer:
     """
@@ -94,7 +94,7 @@ Soft Actor-Critic
 """
 
 
-def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.sac1_dynamic_rnn,
+def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.sac1_dynamic_rnn,
              ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128, steps_per_epoch=5000, epochs=100,
              replay_size=int(1e5), gamma=0.99, reward_scale=1.0, polyak=0.995, lr=5e-4, alpha=0.2,
              h0=1.0, batch_size=100, start_steps=10000, max_ep_len_train=1000, max_ep_len_test=1000,
@@ -333,7 +333,17 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
     # Setup model saving
     # logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},
     #                       outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
+    saver = tf.train.Saver()
 
+    checkpoint_path = logger_kwargs['output_dir'] + '/checkpoints'
+    if not os.path.exists(checkpoint_path):
+         os.makedirs(checkpoint_path)
+
+    if args.is_test or args.is_restore_train:
+         ckpt = tf.train.get_checkpoint_state(checkpoint_path)
+         if ckpt and ckpt.model_checkpoint_path:
+             saver.restore(sess, ckpt.model_checkpoint_path)
+             print("Model restored.")
     # def get_action(o, deterministic=False):
     #     act_op = mu if deterministic else pi
     #     return sess.run(act_op, feed_dict={x_ph_geta: o.reshape(1, -1)})[0]#[0]
@@ -345,7 +355,24 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
         action, hc_1 = sess.run([act_op, hc_geta], feed_dict={x_ph_geta: o.reshape(1, 1, obs_dim),
                                                               hc_ph_geta: hc_0})
         return action[0], hc_1
+        ##############################  test  ############################
 
+    if args.is_test:
+        test_env = gym.make(args.env)
+        ave_ep_ret = 0
+        for j in range(10):
+            o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
+            while not d:  # (d or (ep_len == 2000)):
+                o, r, d, _ = test_env.step(get_action(o))
+                ep_ret += r
+                ep_len += 1
+                if args.test_render:
+                    test_env.render()
+            ave_ep_ret = (j * ave_ep_ret + ep_ret) / (j + 1)
+            print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:', ave_ep_ret, '({}/10)'.format(j + 1))
+        return
+
+        ##############################  train  ############################
     def test_agent(n=5):
         # print('test')
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
@@ -512,8 +539,9 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
             logger.dump_tabular()
 
             # Save model
-            if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and (test_ep_ret_1 > test_ep_ret):
-                logger.save_state({'env': env}, None)
+            if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and test_ep_ret > test_ep_ret_best:
+                save_path = saver.save(sess, checkpoint_path + '/model.ckpt', t)
+                print("Model saved in path: %s" % save_path)
 
             test_ep_ret = test_ep_ret_1
 
@@ -523,6 +551,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    parser.add_argument('--is_restore_train', type=bool, default=False)
+    parser.add_argument('--is_test', type=bool, default=False)
+    parser.add_argument('--test_render', type=bool, default=False)
     parser.add_argument('--max_ep_len_test', type=int, default=400)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
@@ -619,7 +650,7 @@ if __name__ == '__main__':
     env_train = Wrapper_train(gym.make(args.env), args.act_repeate)
     env_test = Wrapper_test(gym.make(args.env), args.act_repeate)
 
-    sac1_rnn(lambda x: env_train if x == 'train' else env_test,
+    sac1_rnn(args, lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
              sac1_dynamic_rnn=core.sac1_dynamic_rnn,
              ac_kwargs=dict(hidden_sizes=[400, 300]),
