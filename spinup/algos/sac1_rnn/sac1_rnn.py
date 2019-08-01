@@ -360,7 +360,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     if args.is_test:
         test_env = gym.make(args.env)
         ave_ep_ret = 0
-        for j in range(10):
+        for j in range(10000):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
             while not d:  # (d or (ep_len == 2000)):
                 o, r, d, _ = test_env.step(get_action(o))
@@ -369,7 +369,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
                 if args.test_render:
                     test_env.render()
             ave_ep_ret = (j * ave_ep_ret + ep_ret) / (j + 1)
-            print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:', ave_ep_ret, '({}/10)'.format(j + 1))
+            print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:', ave_ep_ret, '({}/10000)'.format(j + 1))
         return
 
         ##############################  train  ############################
@@ -411,8 +411,8 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
     total_steps = steps_per_epoch * epochs
 
-    test_ep_ret = test_ep_ret_1 = -10000.0
-
+#    test_ep_ret = test_ep_ret_1 = -10000.0
+    test_ep_ret_best = test_ep_ret = -10000.0
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
 
@@ -505,14 +505,16 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
-            # save best
-            # if epoch > 2000:
-            #     test_agent(50)
-            #     test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
-            #     logger.epoch_dict['TestEpRet'] = []
-            #     print('TestEpRet', test_ep_ret_1)
-
-            test_agent(25)
+            if epoch < 2000:
+                test_agent(25)
+                # test_ep_ret = logger.get_stats('TestEpRet')[0]
+                # print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
+            else:
+                test_agent(25)
+                test_ep_ret = logger.get_stats('TestEpRet')[0]
+                # logger.epoch_dict['TestEpRet'] = []
+                print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
+            # test_agent(25)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
@@ -528,9 +530,9 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha', average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=False)
-            ### logger.log_tabular('Q2Vals', with_min_and_max=True)
+            logger.log_tabular('Q2Vals', with_min_and_max=True)
             # logger.log_tabular('VVals', with_min_and_max=True)
-            ### logger.log_tabular('LogPi', with_min_and_max=True)
+            logger.log_tabular('LogPi', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
             logger.log_tabular('LossQ2', average_only=True)
@@ -542,8 +544,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
             if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and test_ep_ret > test_ep_ret_best:
                 save_path = saver.save(sess, checkpoint_path + '/model.ckpt', t)
                 print("Model saved in path: %s" % save_path)
-
-            test_ep_ret = test_ep_ret_1
+                test_ep_ret_best = test_ep_ret
 
 
 if __name__ == '__main__':
@@ -554,7 +555,7 @@ if __name__ == '__main__':
     parser.add_argument('--is_restore_train', type=bool, default=False)
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_render', type=bool, default=False)
-    parser.add_argument('--max_ep_len_test', type=int, default=400)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
+    parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--hid', type=int, default=300)
