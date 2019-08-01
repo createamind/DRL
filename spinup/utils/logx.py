@@ -13,6 +13,8 @@ import tensorflow as tf
 import os.path as osp, time, atexit, os
 from spinup.utils.mpi_tools import proc_id, mpi_statistics_scalar
 from spinup.utils.serialization_utils import convert_json
+from datetime import datetime
+
 
 color2num = dict(
     gray=30,
@@ -217,7 +219,7 @@ class Logger:
         if proc_id()==0:
             assert hasattr(self, 'tf_saver_elements'), \
                 "First have to setup saving with self.setup_tf_saver"
-            fpath = 'simple_save' + ('%d'%itr if itr is not None else '')
+            fpath = 'simple_save' + ('%d'%itr if itr is not None else '') # + datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
             fpath = osp.join(self.output_dir, fpath)
             if osp.exists(fpath):
                 # simple_save refuses to be useful if fpath already exists,
@@ -253,6 +255,10 @@ class Logger:
                 self.output_file.flush()
         self.log_current_row.clear()
         self.first_row=False
+
+        # clear all the logger data
+        for item_ in self.epoch_dict.keys():
+            self.epoch_dict[item_] = []
 
 class EpochLogger(Logger):
     """

@@ -8,7 +8,7 @@ from spinup.algos.sac1.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack
-
+import os
 
 
 config = tf.ConfigProto()
@@ -55,8 +55,8 @@ Soft Actor-Critic
 """
 
 
-def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99, reward_scale=1.0,
+def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+         steps_per_epoch=500, epochs=100, replay_size=int(1e4), gamma=0.99, reward_scale=1.0,
          polyak=0.995, lr=5e-4, alpha=0.2, batch_size=100, start_steps=10000,
          max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -238,9 +238,46 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},
                           outputs={'mu': mu, 'pi': pi, 'q1': q1, 'q2': q2})
 
+
+    # save and restore
+    saver = tf.train.Saver()
+
+    checkpoint_path = logger_kwargs['output_dir'] + '/checkpoints'
+    if not os.path.exists(checkpoint_path):
+        os.makedirs(checkpoint_path)
+
+    if args.is_test or args.is_restore_train:
+        ckpt = tf.train.get_checkpoint_state(checkpoint_path)
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(sess, ckpt.model_checkpoint_path)
+            print("Model restored.")
+
+
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: o.reshape(1, -1)})[0]
+
+
+
+    ##############################  test  ############################
+
+    if args.is_test:
+        test_env = gym.make(args.env)
+        ave_ep_ret = 0
+        for j in range(10):
+            o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
+            while not d: # (d or (ep_len == 2000)):
+                o, r, d, _ = test_env.step(get_action(o))
+                ep_ret += r
+                ep_len += 1
+                if args.test_render:
+                    test_env.render()
+            ave_ep_ret = (j*ave_ep_ret + ep_ret)/(j+1)
+            print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret,'({}/10)'.format(j+1) )
+        return
+
+
+    ##############################  train  ############################
 
     def test_agent(n=25):
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
@@ -350,8 +387,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.dump_tabular()
 
             # Save model
-            if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and (test_ep_ret > test_ep_ret_best):
-                logger.save_state({'env': env}, None)
+            if ((epoch % save_freq == 0) or (epoch == epochs - 1)) and test_ep_ret > test_ep_ret_best:
+                save_path = saver.save(sess, checkpoint_path+'/model.ckpt', t)
+                print("Model saved in path: %s" % save_path)
                 test_ep_ret_best = test_ep_ret
 
 
@@ -361,6 +399,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+
+    parser.add_argument('--is_restore_train', type=bool, default=False)
+
+    parser.add_argument('--is_test', type=bool, default=False)
+    parser.add_argument('--test_render', type=bool, default=False)
+
     parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
@@ -369,13 +413,13 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=10000)
+    parser.add_argument('--epochs', type=int, default=100000)
     parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2_debug')
-    parser.add_argument('--stack_frames', type=int, default=4)
+    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2_debug1')
+
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -415,9 +459,10 @@ if __name__ == '__main__':
     env3 = Wrapper(gym.make(args.env), 3)
     env1 = Wrapper(gym.make(args.env), 1)
 
-    sac1(lambda n: env3 if n == 3 else env1, actor_critic=core.mlp_actor_critic,
+    sac1(args, lambda n: env3 if n == 3 else env1, actor_critic=core.mlp_actor_critic,
          ac_kwargs=dict(hidden_sizes=[400, 300]),
          gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
          logger_kwargs=logger_kwargs, lr=args.lr, reward_scale=args.reward_scale,
          max_ep_len_train=args.max_ep_len_train, max_ep_len_test=args.max_ep_len_test)
+
 
