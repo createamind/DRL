@@ -229,10 +229,9 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
     s_ph = s_outputs[:, :-1]
     s2_ph = s_outputs[:, 1:]
 
-    _, _, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [
-        None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
-    _, _, logp_pi_, _, _, _, q1_pi_, q2_pi_ = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [
-        None, ] * Lt, [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
+    logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, \
+                                              [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
+    logp_pi_, q1_pi_, q2_pi_ = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
 
     for i in range(Lt):
         # Main outputs from computation graph
@@ -241,7 +240,6 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
                                                                                            s2_ph[:, i],
                                                                                            a_ph[:, i],
                                                                                            **ac_kwargs)
-
         # Target value network
         with tf.variable_scope('target', reuse=tf.AUTO_REUSE):
             _, _, logp_pi_[i], _, _, _, q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:, i], s2_ph[:, i], a_ph[:, i],
@@ -277,10 +275,10 @@ def sac1_rnn(env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.s
     ######
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    min_q_pi_ = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)
+    v_backup = tf.stop_gradient(min_q_pi_ - alpha * logp_pi2)
     q_backup = r_ph + gamma * (1 - d_ph) * v_backup
 
     # Soft actor-critic losses
@@ -547,7 +545,7 @@ if __name__ == '__main__':
     parser.add_argument('--h0', type=float, default=1.0)  # for alpha learning rate decay
     # parser.add_argument('--epochs', type=int, default=1000)
     # parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'cudnn_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
+    name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
         parser.parse_args().env,
         parser.parse_args().Lt,
         # parser.parse_args().hid1,
@@ -623,7 +621,7 @@ if __name__ == '__main__':
 
     sac1_rnn(lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
-             sac1_dynamic_rnn=core.sac1_dynamic_rnn1,
+             sac1_dynamic_rnn=core.sac1_dynamic_rnn,
              ac_kwargs=dict(hidden_sizes=[400, 300]),
              Lb=args.Lb,
              Lt=args.Lt,
