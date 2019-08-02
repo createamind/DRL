@@ -4,7 +4,7 @@ from numbers import Number
 import gym
 import time
 from spinup.algos.sac1_rnn import core
-from spinup.algos.sac1_rnn.core import get_vars
+from spinup.algos.sac1_rnn.core import get_vars, mlp
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack
@@ -232,8 +232,12 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt, \
                                               [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
     logp_pi_, q1_pi_, q2_pi_ = [None, ] * Lt, [None, ] * Lt, [None, ] * Lt
+    s_predict = [None, ] * Lt
 
     for i in range(Lt):
+        with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
+            s_predict[i] = mlp(tf.concat([s_ph[:, i], a_ph[:, i]], axis=-1), hidden_sizes=(hc_dim, hc_dim), activation=tf.nn.relu)
+
         # Main outputs from computation graph
         with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
             _, _, logp_pi[i], logp_pi2[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:, i],
@@ -244,7 +248,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         with tf.variable_scope('target', reuse=tf.AUTO_REUSE):
             _, _, logp_pi_[i], _, _, _, q1_pi_[i], q2_pi_[i] = actor_critic(s2_ph[:, i], s2_ph[:, i], a_ph[:, i],
                                                                             **ac_kwargs)
-
+    s_predict = tf.stack(s_predict, axis=1)
     logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi = tf.stack(logp_pi, axis=1), tf.stack(logp_pi2, axis=1), \
                             tf.stack(q1, axis=1), tf.stack(q2, axis=1), tf.stack(q1_pi, axis=1), tf.stack(q2_pi, axis=1)
     logp_pi_, q1_pi_, q2_pi_ = tf.stack(logp_pi_, axis=1), tf.stack(q1_pi_, axis=1), tf.stack(q2_pi_, axis=1)
@@ -277,15 +281,19 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     # Min Double-Q:
     min_q_pi_ = tf.minimum(q1_pi_, q2_pi_)
 
+    # model loss
+    model_loss = tf.reduce_mean(obs12_train[:, :, tf.newaxis] * tf.abs(s_predict - (s2_ph - s_ph)))
+
     # Targets for Q and V regression
     v_backup = tf.stop_gradient(min_q_pi_ - alpha * logp_pi2)
-    q_backup = r_ph + gamma * (1 - d_ph) * v_backup
+    q_backup = r_ph + args.beta * tf.stop_gradient(model_loss) + gamma * (1 - d_ph) * v_backup
 
     # Soft actor-critic losses
     pi_loss = tf.reduce_mean(obs12_train * (alpha * logp_pi - q1_pi))
     q1_loss = 0.5 * tf.reduce_mean(obs12_train * (q_backup - q1) ** 2)
     q2_loss = 0.5 * tf.reduce_mean(obs12_train * (q_backup - q2) ** 2)
     value_loss = q1_loss + q2_loss
+
 
     # Policy train op
     # (has to be separate from value train op, because q1_pi appears in pi_loss)
@@ -296,13 +304,28 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     # Value train op
     # (control dep of train_pi_op because sess.run otherwise evaluates in nondeterministic order)
     value_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    value_params = get_vars('main/q') + get_vars('rnn')
+    if "q" in args.opt:
+        value_params = get_vars('main/q') + get_vars('rnn')
+    else:
+        value_params = get_vars('main/q')
+
+    # value_params = get_vars('main/q') + get_vars('rnn')
     with tf.control_dependencies([train_pi_op]):
         train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
 
+    # Model train op
+    model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
+    if "m" in args.opt:
+        model_params = get_vars('model') + get_vars('rnn')
+    else:
+        model_params = get_vars('model')
+
+    with tf.control_dependencies([train_value_op]):
+        train_model_op = model_optimizer.minimize(model_loss, var_list=model_params)
+
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)
-    with tf.control_dependencies([train_value_op]):
+    with tf.control_dependencies([train_model_op]):
         target_update = tf.group([tf.assign(v_targ, polyak * v_targ + (1 - polyak) * v_main)
                                   for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
 
@@ -552,6 +575,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    parser.add_argument('--opt', type=str, default='mq')
     parser.add_argument('--is_restore_train', type=bool, default=False)
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_render', type=bool, default=False)
@@ -568,16 +592,13 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    # parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2_debug')
     parser.add_argument('--act_repeate', type=int, default=3)
     parser.add_argument('--Lt', type=int, default=10)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
     parser.add_argument('--hc_dim', type=int, default=128)
-    # parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--h0', type=float, default=1.0)  # for alpha learning rate decay
-    # parser.add_argument('--epochs', type=int, default=1000)
-    # parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
+    parser.add_argument('--beta', type=float, default=0.2)  # for curiosity bond
+    name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}_beta_{}'.format(
         parser.parse_args().env,
         parser.parse_args().Lt,
         # parser.parse_args().hid1,
@@ -586,7 +607,8 @@ if __name__ == '__main__':
         # parser.parse_args().flag,
         parser.parse_args().h0,
         parser.parse_args().alpha,
-        parser.parse_args().seed)
+        parser.parse_args().seed,
+        parser.parse_args().beta)
     # parser.parse_args().beta,
     # parser.parse_args().tm,
     # parser.parse_args().repeat,
