@@ -425,7 +425,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     ################################## deques reset
     t_queue = 1
     hc_run = np.zeros((1, 128,), dtype=np.float32)
-    for _i in range(Lb):
+    for _ in range(Lb):
         obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
         a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
     obs_hc_queue.append((o, hc_run[0]))
@@ -476,7 +476,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
             replay_buffer_rnn.store(obs_hc_queue, a_r_d_data01_queue)
 
         if (d or (ep_len == max_ep_len_train)) and t_queue % Lt != 0:
-            for _0 in range(Lt - t_queue % Lt):
+            for _ in range(Lt - t_queue % Lt):
                 a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
                 obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
             replay_buffer_rnn.store(obs_hc_queue, a_r_d_data01_queue)
@@ -528,7 +528,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
-            if epoch < 2000:
+            if epoch < 500:
                 test_agent(25)
                 # test_ep_ret = logger.get_stats('TestEpRet')[0]
                 # print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
@@ -593,10 +593,10 @@ if __name__ == '__main__':
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
     parser.add_argument('--act_repeate', type=int, default=3)
-    parser.add_argument('--Lt', type=int, default=10)  # 'train'
+    parser.add_argument('--Lt', type=int, default=15)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
     parser.add_argument('--hc_dim', type=int, default=128)
-    parser.add_argument('--h0', type=float, default=1.0)  # for alpha learning rate decay
+    parser.add_argument('--h0', type=float, default=0.1)  # for alpha learning rate decay
     parser.add_argument('--beta', type=float, default=0.2)  # for curiosity bond
     name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}_beta_{}'.format(
         parser.parse_args().env,
@@ -675,7 +675,7 @@ if __name__ == '__main__':
 
     sac1_rnn(args, lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
-             sac1_dynamic_rnn=core.sac1_dynamic_rnn,
+             sac1_dynamic_rnn=core.sac1_dynamic_rnn1,
              ac_kwargs=dict(hidden_sizes=[400, 300]),
              Lb=args.Lb,
              Lt=args.Lt,
