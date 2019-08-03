@@ -282,18 +282,17 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     min_q_pi_ = tf.minimum(q1_pi_, q2_pi_)
 
     # model loss
-    model_loss = tf.reduce_mean(obs12_train[:, :, tf.newaxis] * tf.abs(s_predict - (s2_ph - s_ph)))
-
+    model_loss = obs12_train[:, :, tf.newaxis] * tf.abs(s_predict - (s2_ph - s_ph))
+    in_r = tf.stop_gradient(tf.reduce_mean(model_loss, axis=-1))  # average over all hidden state
     # Targets for Q and V regression
     v_backup = tf.stop_gradient(min_q_pi_ - alpha * logp_pi2)
-    q_backup = r_ph + args.beta * tf.stop_gradient(model_loss) + gamma * (1 - d_ph) * v_backup
+    q_backup = r_ph + args.beta * in_r + gamma * (1 - d_ph) * v_backup
 
     # Soft actor-critic losses
     pi_loss = tf.reduce_mean(obs12_train * (alpha * logp_pi - q1_pi))
     q1_loss = 0.5 * tf.reduce_mean(obs12_train * (q_backup - q1) ** 2)
     q2_loss = 0.5 * tf.reduce_mean(obs12_train * (q_backup - q2) ** 2)
     value_loss = q1_loss + q2_loss
-
 
     # Policy train op
     # (has to be separate from value train op, because q1_pi appears in pi_loss)
@@ -331,10 +330,10 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
     # All ops to call during one training step
     if isinstance(alpha, Number):
-        step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, tf.identity(alpha),
+        step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi2, tf.identity(alpha), in_r,
                     train_pi_op, train_value_op, target_update]
     else:
-        step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi, alpha,
+        step_ops = [pi_loss, q1_loss, q2_loss, q1, q2, logp_pi2, alpha, in_r,
                     train_pi_op, train_value_op, target_update, train_alpha_op]
 
     # Initializing targets to match main variables
@@ -434,7 +433,6 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
     total_steps = steps_per_epoch * epochs
 
-#    test_ep_ret = test_ep_ret_1 = -10000.0
     test_ep_ret_best = test_ep_ret = -10000.0
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -506,10 +504,14 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
                 logger.store(LossPi=outs[0],
                              LossQ1=outs[1],
                              LossQ2=outs[2],
-                             Q1Vals=outs[3][:, 0],
+                             Q1Vals=outs[3][:, 0],   # q1 (N, T)
+                             Q1Vals_m=np.mean(outs[3], axis=-1),   # q1 (N, T)
                              Q2Vals=outs[4][:, 0],
-                             LogPi=outs[5][:, 0],
-                             Alpha=outs[6])
+                             Q2Vals_m=np.mean(outs[4], axis=-1),
+                             LogPi=outs[5][:, 0],    # logp_pi2 (N, T)
+                             Alpha=outs[6],
+                             Model_loss=outs[7][:, -1],         # in_r (N, T)
+                             Model_loss_m=np.mean(outs[7], axis=-1))
 
             logger.store(EpRet=ep_ret / reward_scale, EpLen=ep_len)
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -528,14 +530,13 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
-            if epoch < 500:
+            if epoch < 1000:
                 test_agent(25)
                 # test_ep_ret = logger.get_stats('TestEpRet')[0]
                 # print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
             else:
                 test_agent(25)
                 test_ep_ret = logger.get_stats('TestEpRet')[0]
-                # logger.epoch_dict['TestEpRet'] = []
                 print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
             # test_agent(25)
 
@@ -546,20 +547,20 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
             logger.log_tabular('EpRet', with_min_and_max=True)
 
             logger.log_tabular('TestEpRet', with_min_and_max=True)
-            # test_ep_ret_1 = logger.get_stats('TestEpRet')[0]
-
             logger.log_tabular('EpLen', average_only=True)
             logger.log_tabular('TestEpLen', average_only=True)
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha', average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=False)
+            logger.log_tabular('Q1Vals_m', with_min_and_max=False)
             logger.log_tabular('Q2Vals', with_min_and_max=True)
-            # logger.log_tabular('VVals', with_min_and_max=True)
+            logger.log_tabular('Q2Vals_m', with_min_and_max=True)
+            logger.log_tabular('Model_loss', with_min_and_max=True)
+            logger.log_tabular('Model_loss_m', with_min_and_max=True)
             logger.log_tabular('LogPi', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
             logger.log_tabular('LossQ2', average_only=True)
-            # logger.log_tabular('LossV', average_only=True)
             logger.log_tabular('Time', time.time() - start_time)
             logger.dump_tabular()
 
@@ -575,6 +576,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    parser.add_argument('--message', type=str, default='debug')  # 'Pendulum-v0'
     parser.add_argument('--opt', type=str, default='mq')
     parser.add_argument('--is_restore_train', type=bool, default=False)
     parser.add_argument('--is_test', type=bool, default=False)
@@ -592,13 +594,15 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--act_repeate', type=int, default=3)
+    parser.add_argument('--act_repeat', type=int, default=3)
     parser.add_argument('--Lt', type=int, default=15)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
     parser.add_argument('--hc_dim', type=int, default=128)
     parser.add_argument('--h0', type=float, default=0.1)  # for alpha learning rate decay
     parser.add_argument('--beta', type=float, default=0.2)  # for curiosity bond
-    name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}_beta_{}'.format(
+    name = '{}_opt_{}_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}_beta_{}'.format(
+        parser.parse_args().message,
+        parser.parse_args().opt,
         parser.parse_args().env,
         parser.parse_args().Lt,
         # parser.parse_args().hid1,
@@ -670,12 +674,12 @@ if __name__ == '__main__':
 
     # env = FrameStack(env, args.stack_frames)
 
-    env_train = Wrapper_train(gym.make(args.env), args.act_repeate)
-    env_test = Wrapper_test(gym.make(args.env), args.act_repeate)
+    env_train = Wrapper_train(gym.make(args.env), args.act_repeat)
+    env_test = Wrapper_test(gym.make(args.env), args.act_repeat)
 
     sac1_rnn(args, lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
-             sac1_dynamic_rnn=core.sac1_dynamic_rnn1,
+             sac1_dynamic_rnn=core.sac1_dynamic_rnn,
              ac_kwargs=dict(hidden_sizes=[400, 300]),
              Lb=args.Lb,
              Lt=args.Lt,
