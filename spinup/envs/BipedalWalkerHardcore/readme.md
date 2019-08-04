@@ -38,7 +38,7 @@ code:
 https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWalkerHardcore-v2.py
 
 try saved model:
-https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_test.py
+https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_test_old.py
 
 experiment details:
 https://mp.weixin.qq.com/s/8vgLGcpsWkF89ma7T2twRA
