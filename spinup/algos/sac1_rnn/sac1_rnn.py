@@ -378,7 +378,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
-            hc_run_test = np.zeros((1, 128,), dtype=np.float32)
+            hc_run_test = np.zeros((1, hc_dim,), dtype=np.float32)
             while not (d or (ep_len == max_ep_len_test)):
                 # Take deterministic actions at test time
                 a_test, hc_run_test = get_action(o, hc_run_test, True)
@@ -401,10 +401,10 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
     ################################## deques reset
     t_queue = 1
-    hc_run = np.zeros((1, 128,), dtype=np.float32)
+    hc_run = np.zeros((1, hc_dim,), dtype=np.float32)
     for _i in range(Lb):
-        obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
-        a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+        obs_hc_queue.append((np.zeros((obs_dim,), dtype=np.float32), np.zeros((hc_dim,), dtype=np.float32)))
+        a_r_d_data01_queue.append((np.zeros((act_dim,), dtype=np.float32), 0.0, False, False))
     obs_hc_queue.append((o, hc_run[0]))
 
     ################################## deques reset
@@ -454,8 +454,8 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
         if (d or (ep_len == max_ep_len_train)) and t_queue % Lt != 0:
             for _0 in range(Lt - t_queue % Lt):
-                a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
-                obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
+                a_r_d_data01_queue.append((np.zeros((act_dim,), dtype=np.float32), 0.0, False, False))
+                obs_hc_queue.append((np.zeros((obs_dim,), dtype=np.float32), np.zeros((hc_dim,), dtype=np.float32)))
             replay_buffer_rnn.store(obs_hc_queue, a_r_d_data01_queue)
 
         t_queue += 1
@@ -493,10 +493,10 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
             ################################## deques reset
             t_queue = 1
-            hc_run = np.zeros((1, 128,), dtype=np.float32)
+            hc_run = np.zeros((1, hc_dim,), dtype=np.float32)
             for _i in range(Lb):
-                obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
-                a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+                obs_hc_queue.append((np.zeros((obs_dim,), dtype=np.float32), np.zeros((hc_dim,), dtype=np.float32)))
+                a_r_d_data01_queue.append((np.zeros((act_dim,), dtype=np.float32), 0.0, False, False))
             obs_hc_queue.append((o, hc_run[0]))
 
             ################################## deques reset
@@ -604,25 +604,27 @@ if __name__ == '__main__':
         def __init__(self, env, action_repeat=3):
             self._env = env
             self.action_repeat = action_repeat
+            self.obs_dim = env.observation_space.shape[0]
+            self.act_dim = env.action_space.shape[0]
 
         def __getattr__(self, name):
             return getattr(self._env, name)
 
         def reset(self):
-            obs = self._env.reset() + args.obs_noise * (-2 * np.random.random(24) + 1)
+            obs = self._env.reset() + args.obs_noise * (-2 * np.random.random(self.obs_dim) + 1)
             return obs
 
         def step(self, action):
-            action += args.act_noise * (-2 * np.random.random(4) + 1)
+            action += args.act_noise * (-2 * np.random.random(self.act_dim) + 1)
             r = 0.0
             for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 # r -= 0.001
                 if done_:
-                    return obs_ + args.obs_noise * (-2 * np.random.random(24) + 1), 0.0, done_, info_
+                    return obs_ + args.obs_noise * (-2 * np.random.random(self.obs_dim) + 1), 0.0, done_, info_
 
-            return obs_ + args.obs_noise * (-2 * np.random.random(24) + 1), args.reward_scale * r, done_, info_
+            return obs_ + args.obs_noise * (-2 * np.random.random(self.obs_dim) + 1), args.reward_scale * r, done_, info_
 
 
     class Wrapper_test(object):
