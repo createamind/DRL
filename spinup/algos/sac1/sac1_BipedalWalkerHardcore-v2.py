@@ -181,7 +181,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi + target_entropy))
 
-        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr*0.1, name='alpha_optimizer')
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr*1, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 ######
 
@@ -322,7 +322,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 logger.save_state({'env': env}, None)
 
             # Test the performance of the deterministic version of the agent.
-            test_agent()
+            test_agent(25)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
@@ -334,9 +334,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('TotalEnvInteracts', t)
             logger.log_tabular('Alpha',average_only=True)
             logger.log_tabular('Q1Vals', with_min_and_max=False)
-            ### logger.log_tabular('Q2Vals', with_min_and_max=True)
+            logger.log_tabular('Q2Vals', with_min_and_max=True)
             # logger.log_tabular('VVals', with_min_and_max=True)
-            ### logger.log_tabular('LogPi', with_min_and_max=True)
+            logger.log_tabular('LogPi', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ1', average_only=True)
             logger.log_tabular('LossQ2', average_only=True)
@@ -360,7 +360,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2')
+    parser.add_argument('--exp_name', type=str, default='sac1_baseline_BipedalWalkerHardcore-v2_alpha_auto_h0_1')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 
