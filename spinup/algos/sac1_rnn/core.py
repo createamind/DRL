@@ -128,6 +128,8 @@ def sac1_dynamic_rnn(x, hc_0, hc_size=128):
     x       N L D
     hc_0    N   H
     """
+    hc_size = int(hc_0.shape[1])
+
     basic_cell = tf.nn.rnn_cell.GRUCell(num_units=hc_size, reuse=tf.AUTO_REUSE)
 
     outputs, states = tf.nn.dynamic_rnn(basic_cell, x, initial_state=hc_0, dtype=tf.float32)

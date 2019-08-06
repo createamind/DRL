@@ -309,8 +309,6 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         value_params = get_vars('main/q')
 
     # value_params = get_vars('main/q') + get_vars('rnn')
-    with tf.control_dependencies([train_pi_op]):
-        train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
 
     # Model train op
     model_optimizer = tf.train.AdamOptimizer(learning_rate=lr)
@@ -319,12 +317,14 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     else:
         model_params = get_vars('model')
 
-    with tf.control_dependencies([train_value_op]):
+    with tf.control_dependencies([train_pi_op]):
         train_model_op = model_optimizer.minimize(model_loss, var_list=model_params)
 
+    with tf.control_dependencies([train_model_op]):
+        train_value_op = value_optimizer.minimize(value_loss, var_list=value_params)
     # Polyak averaging for target variables
     # (control flow because sess.run otherwise evaluates in nondeterministic order)
-    with tf.control_dependencies([train_model_op]):
+    with tf.control_dependencies([train_value_op]):
         target_update = tf.group([tf.assign(v_targ, polyak * v_targ + (1 - polyak) * v_main)
                                   for v_main, v_targ in zip(get_vars('main'), get_vars('target'))])
 
@@ -400,7 +400,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
-            hc_run_test = np.zeros((1, 128,), dtype=np.float32)
+            hc_run_test = np.zeros((1, hc_dim,), dtype=np.float32)
             while not (d or (ep_len == max_ep_len_test)):
                 # Take deterministic actions at test time
                 a_test, hc_run_test = get_action(o, hc_run_test, True)
@@ -423,10 +423,10 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
     ################################## deques reset
     t_queue = 1
-    hc_run = np.zeros((1, 128,), dtype=np.float32)
+    hc_run = np.zeros((1, hc_dim,), dtype=np.float32)
     for _ in range(Lb):
-        obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
-        a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+        obs_hc_queue.append((np.zeros((obs_dim,), dtype=np.float32), np.zeros((hc_dim,), dtype=np.float32)))
+        a_r_d_data01_queue.append((np.zeros((act_dim,), dtype=np.float32), 0.0, False, False))
     obs_hc_queue.append((o, hc_run[0]))
 
     ################################## deques reset
@@ -475,8 +475,8 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
         if (d or (ep_len == max_ep_len_train)) and t_queue % Lt != 0:
             for _ in range(Lt - t_queue % Lt):
-                a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
-                obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
+                a_r_d_data01_queue.append((np.zeros((act_dim,), dtype=np.float32), 0.0, False, False))
+                obs_hc_queue.append((np.zeros((obs_dim,), dtype=np.float32), np.zeros((hc_dim,), dtype=np.float32)))
             replay_buffer_rnn.store(obs_hc_queue, a_r_d_data01_queue)
 
         t_queue += 1
@@ -518,10 +518,10 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 
             ################################## deques reset
             t_queue = 1
-            hc_run = np.zeros((1, 128,), dtype=np.float32)
+            hc_run = np.zeros((1, hc_dim,), dtype=np.float32)
             for _i in range(Lb):
-                obs_hc_queue.append((np.zeros((24,), dtype=np.float32), np.zeros((128,), dtype=np.float32)))
-                a_r_d_data01_queue.append((np.zeros((4,), dtype=np.float32), 0.0, False, False))
+                obs_hc_queue.append((np.zeros((obs_dim,), dtype=np.float32), np.zeros((hc_dim,), dtype=np.float32)))
+                a_r_d_data01_queue.append((np.zeros((act_dim,), dtype=np.float32), 0.0, False, False))
             obs_hc_queue.append((o, hc_run[0]))
 
             ################################## deques reset
@@ -577,7 +577,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
     parser.add_argument('--message', type=str, default='debug')  # 'Pendulum-v0'
-    parser.add_argument('--opt', type=str, default='mq')
+    parser.add_argument('--opt', type=str, default='q')
     parser.add_argument('--is_restore_train', type=bool, default=False)
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_render', type=bool, default=False)
@@ -592,12 +592,12 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--reward_scale', type=float, default=5.0)
-    parser.add_argument('--act_noise', type=float, default=0.3)
+    parser.add_argument('--act_noise', type=float, default=0.0)
     parser.add_argument('--obs_noise', type=float, default=0.0)
     parser.add_argument('--act_repeat', type=int, default=3)
     parser.add_argument('--Lt', type=int, default=15)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
-    parser.add_argument('--hc_dim', type=int, default=128)
+    parser.add_argument('--hc_dim', type=int, default=64)
     parser.add_argument('--h0', type=float, default=0.1)  # for alpha learning rate decay
     parser.add_argument('--beta', type=float, default=0.2)  # for curiosity bond
     name = '{}_opt_{}_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}_beta_{}'.format(
@@ -630,25 +630,26 @@ if __name__ == '__main__':
         def __init__(self, env, action_repeat=3):
             self._env = env
             self.action_repeat = action_repeat
-
+            self.obs_dim = env.observation_space.shape[0]
+            self.act_dim = env.action_space.shape[0]
         def __getattr__(self, name):
             return getattr(self._env, name)
 
         def reset(self):
-            obs = self._env.reset() + args.obs_noise * (-2 * np.random.random(24) + 1)
+            obs = self._env.reset() + args.obs_noise * (-2 * np.random.random(self.obs_dim) + 1)
             return obs
 
         def step(self, action):
-            action += args.act_noise * (-2 * np.random.random(4) + 1)
+            action += args.act_noise * (-2 * np.random.random(self.act_dim) + 1)
             r = 0.0
             for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)
                 r = r + reward_
                 # r -= 0.001
                 if done_:
-                    return obs_ + args.obs_noise * (-2 * np.random.random(24) + 1), 0.0, done_, info_
+                    return obs_ + args.obs_noise * (-2 * np.random.random(self.obs_dim) + 1), 0.0, done_, info_
 
-            return obs_ + args.obs_noise * (-2 * np.random.random(24) + 1), args.reward_scale * r, done_, info_
+            return obs_ + args.obs_noise * (-2 * np.random.random(self.obs_dim) + 1), args.reward_scale * r, done_, info_
 
 
     class Wrapper_test(object):
@@ -680,7 +681,7 @@ if __name__ == '__main__':
     sac1_rnn(args, lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
              sac1_dynamic_rnn=core.sac1_dynamic_rnn,
-             ac_kwargs=dict(hidden_sizes=[400, 300]),
+             ac_kwargs=dict(hidden_sizes=[256, 256]),
              Lb=args.Lb,
              Lt=args.Lt,
              hc_dim=args.hc_dim,
