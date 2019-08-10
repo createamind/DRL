@@ -9,6 +9,10 @@
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped0.2.png" width="500" style="display:inline"/>
 </div>
 
+<div>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped335.jpg" width="500" style="display:inline"/>
+</div>
+
 code:
 https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWalker-v2.py
 
@@ -44,8 +48,13 @@ experiment details:
 https://mp.weixin.qq.com/s/8vgLGcpsWkF89ma7T2twRA
 
 update:
+
 <div>
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped317.png" width="550" style="display:inline"/>
+</div>
+
+<div>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/bipedhardcore317.jpg" width="550" style="display:inline"/>
 </div>
 
 
