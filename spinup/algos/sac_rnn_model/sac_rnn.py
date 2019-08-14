@@ -337,7 +337,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                                                                s_t_0: s_t_0_})
         return action.reshape(act_dim), s_t_1_
 
-    def test_agent(mu, pi, states, n=5):
+    def test_agent(mu, pi, states, n=25):
         # global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -490,9 +490,9 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
 if __name__ == '__main__':
-    from OpenGL import GLU
+    # from OpenGL import GLU
     import argparse
-    import roboschool
+    # import roboschool
     from gym_env import EnvWrapper
 
     parser = argparse.ArgumentParser()
@@ -507,7 +507,7 @@ if __name__ == '__main__':
     parser.add_argument('--hid2', type=int, default=256)
     parser.add_argument('--state', type=int, default=64)
     parser.add_argument('--batch_size', type=int, default=150)
-    parser.add_argument('--seq', type=int, default=17)
+    parser.add_argument('--seq', type=int, default=17)   # 17
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -520,7 +520,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'debug_beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,

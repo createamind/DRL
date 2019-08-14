@@ -575,7 +575,8 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    parser.add_argument('--env', type=str, default='Pendulum-v0')  # 'Pendulum-v0'
     parser.add_argument('--message', type=str, default='debug')  # 'Pendulum-v0'
     parser.add_argument('--opt', type=str, default='q')
     parser.add_argument('--is_restore_train', type=bool, default=False)
@@ -680,7 +681,7 @@ if __name__ == '__main__':
 
     sac1_rnn(args, lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
-             sac1_dynamic_rnn=core.sac1_dynamic_rnn,
+             sac1_dynamic_rnn=core.sac1_dynamic_rnn1,
              ac_kwargs=dict(hidden_sizes=[256, 256]),
              Lb=args.Lb,
              Lt=args.Lt,
