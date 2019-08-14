@@ -95,9 +95,9 @@ Soft Actor-Critic
 
 
 def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.sac1_dynamic_rnn,
-             ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128, steps_per_epoch=5000, epochs=100,
+             ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128, steps_per_epoch=3000, epochs=100,
              replay_size=int(1e5), gamma=0.99, reward_scale=1.0, polyak=0.995, lr=5e-4, alpha=0.2,
-             h0=1.0, batch_size=100, start_steps=10000, max_ep_len_train=1000, max_ep_len_test=1000,
+             h0=1.0, batch_size=150, start_steps=10000, max_ep_len_train=1000, max_ep_len_test=1000,
              logger_kwargs=dict(), save_freq=1):
     """
 
@@ -414,6 +414,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
 #    test_ep_ret = test_ep_ret_1 = -10000.0
     test_ep_ret_best = test_ep_ret = -10000.0
     # Main loop: collect experience in env and update/log each epoch
+    start = time.time()
     for t in range(total_steps):
 
         """
@@ -424,7 +425,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         if t > start_steps:
             a, hc_run = get_action(o, hc_run)
         else:
-            _a, hc_run = get_action(o, hc_run)
+            _, hc_run = get_action(o, hc_run)
             a = env.action_space.sample()
 
         # Step the env
@@ -489,6 +490,8 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
                              Alpha=outs[6])
 
             logger.store(EpRet=ep_ret / reward_scale, EpLen=ep_len)
+            print("ep_len", ep_len, "time", time.time() - start)
+            start = time.time()
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
             ################################## deques reset
@@ -558,23 +561,23 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
-    parser.add_argument('--hid', type=int, default=300)
-    parser.add_argument('--l', type=int, default=1)
+    parser.add_argument('--h1', type=int, default=400)
+    parser.add_argument('--h2', type=int, default=300)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--reward_scale', type=float, default=5.0)
-    parser.add_argument('--act_noise', type=float, default=0.3)
+    parser.add_argument('--reward_scale', type=float, default=1.0)
+    parser.add_argument('--act_noise', type=float, default=0.0)
     parser.add_argument('--obs_noise', type=float, default=0.0)
     # parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2_debug')
-    parser.add_argument('--act_repeate', type=int, default=3)
+    parser.add_argument('--act_repeate', type=int, default=2)
     parser.add_argument('--Lt', type=int, default=10)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
     parser.add_argument('--hc_dim', type=int, default=128)
     # parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--h0', type=float, default=1.0)  # for alpha learning rate decay
+    parser.add_argument('--h0', type=float, default=0.1)  # for alpha learning rate decay
     # parser.add_argument('--epochs', type=int, default=1000)
     # parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
     name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
@@ -653,10 +656,11 @@ if __name__ == '__main__':
     env_train = Wrapper_train(gym.make(args.env), args.act_repeate)
     env_test = Wrapper_test(gym.make(args.env), args.act_repeate)
 
-    sac1_rnn(args, lambda x: env_train if x == 'train' else env_test,
+    sac1_rnn(args,
+             lambda x: env_train if x == 'train' else env_test,
              actor_critic=core.mlp_actor_critic,
-             sac1_dynamic_rnn=core.sac1_dynamic_rnn,
-             ac_kwargs=dict(hidden_sizes=[400, 300]),
+             sac1_dynamic_rnn=core.sac1_dynamic_rnn1,
+             ac_kwargs=dict(hidden_sizes=[args.h1, args.h2]),
              Lb=args.Lb,
              Lt=args.Lt,
              hc_dim=args.hc_dim,
