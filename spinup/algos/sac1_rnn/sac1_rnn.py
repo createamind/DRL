@@ -554,28 +554,31 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+    # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
+
+    # parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='Pendulum-v0')  # 'Pendulum-v0'
     parser.add_argument('--is_restore_train', type=bool, default=False)
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_render', type=bool, default=False)
     parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
-    parser.add_argument('--h1', type=int, default=400)
-    parser.add_argument('--h2', type=int, default=300)
+    parser.add_argument('--h1', type=int, default=256)
+    parser.add_argument('--h2', type=int, default=256)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--lr', type=float, default=6e-4)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--reward_scale', type=float, default=1.0)
     parser.add_argument('--act_noise', type=float, default=0.0)
     parser.add_argument('--obs_noise', type=float, default=0.0)
     # parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2_debug')
-    parser.add_argument('--act_repeate', type=int, default=2)
-    parser.add_argument('--Lt', type=int, default=10)  # 'train'
+    parser.add_argument('--act_repeate', type=int, default=1)
+    parser.add_argument('--Lt', type=int, default=15)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
-    parser.add_argument('--hc_dim', type=int, default=128)
+    parser.add_argument('--hc_dim', type=int, default=64)
     # parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--h0', type=float, default=0.1)  # for alpha learning rate decay
     # parser.add_argument('--epochs', type=int, default=1000)
