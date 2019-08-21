@@ -73,4 +73,4 @@ Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks (MAML)
 
 
 <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1.png" width="550" style="display:inline"/>
-<img src="https://github.com/createamind/DRL/blob/master/video_pic/sqn.png" width="550" style="display:inline"/>
+<img src="https://github.com/createamind/DRL/blob/master/video_pic/maxsqn.png" width="550" style="display:inline"/>
