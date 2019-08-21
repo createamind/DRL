@@ -411,7 +411,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='A_test_batchsize200f')
+    parser.add_argument('--exp_name', type=str, default='A_sac1_BipedalWalker-v2_debug')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 
@@ -450,7 +450,8 @@ if __name__ == '__main__':
     # env = FrameStack(env, args.stack_frames)
 
     env3 = Wrapper(gym.make(args.env), 3)
-    env1 = Wrapper(gym.make(args.env), 1)
+    # env1 = Wrapper(gym.make(args.env), 1)
+    env1 = gym.make(args.env)
 
     sac1(args, lambda n : env3 if n==3 else env1, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]), start_steps = args.start_steps,
