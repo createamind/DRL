@@ -4,6 +4,8 @@
 <div>
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_biped200.png" width="350" style="display:inline"/>
 </div>
+Code:
+https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWalker-v2_200ep.py
 
 <div>
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped0.2.png" width="500" style="display:inline"/>
@@ -13,7 +15,9 @@
     <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped335.jpg" width="500" style="display:inline"/>
 </div>
 
-code:
+Trained model can be found in :
+https://github.com/createamind/DRL/blob/master/saved_models/A_sac1_BipedalWalker-v2_3e6_1.tar.gz
+Code
 https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWalker-v2.py
 
 
