@@ -2,7 +2,7 @@
 ## BipedalWalker-v2
 
 <div>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped298.png" width="350" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/sac1_biped200.png" width="350" style="display:inline"/>
 </div>
 
 <div>
