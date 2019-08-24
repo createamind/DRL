@@ -129,9 +129,9 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             the current policy and value function.
 
     """
-
-    logger = EpochLogger(**logger_kwargs)
-    logger.save_config(locals())
+    if not args.is_test:
+        logger = EpochLogger(**logger_kwargs)
+        logger.save_config(locals())
 
     tf.set_random_seed(seed)
     np.random.seed(seed)
@@ -258,7 +258,7 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         for j in range(10000):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
             while not d: # (d or (ep_len == 2000)):
-                o, r, d, _ = test_env.step(get_action(o))
+                o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
                 ep_len += 1
                 if args.test_render:

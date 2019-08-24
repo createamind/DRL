@@ -129,9 +129,9 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             the current policy and value function.
 
     """
-
-    logger = EpochLogger(**logger_kwargs)
-    logger.save_config(locals())
+    if not args.is_test:
+        logger = EpochLogger(**logger_kwargs)
+        logger.save_config(locals())
 
     tf.set_random_seed(seed)
     np.random.seed(seed)
@@ -258,7 +258,7 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         for j in range(10000):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
             while not d: # (d or (ep_len == 2000)):
-                o, r, d, _ = test_env.step(get_action(o))
+                o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
                 ep_len += 1
                 if args.test_render:
@@ -395,7 +395,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--is_restore_train', type=bool, default=False)
 
-    parser.add_argument('--is_test', type=bool, default=False)
+    parser.add_argument('--is_test', type=bool, default=True)
     parser.add_argument('--test_render', type=bool, default=False)
 
     parser.add_argument('--max_ep_len_test', type=int, default=2000) # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
@@ -411,7 +411,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='A_sac1_BipedalWalker-v2_debug')
+    parser.add_argument('--exp_name', type=str, default='A_sac1_BipedalWalker-v2_3e6_1')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 

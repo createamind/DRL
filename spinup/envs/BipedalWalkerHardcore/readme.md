@@ -12,7 +12,7 @@ https://github.com/createamind/DRL/blob/master/spinup/algos/sac1/sac1_BipedalWal
 </div>
 
 <div>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped335.jpg" width="500" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/biped338.png" width="500" style="display:inline"/>
 </div>
 
 Trained model can be found in :
@@ -58,7 +58,7 @@ update:
 </div>
 
 <div>
-    <img src="https://github.com/createamind/DRL/blob/master/video_pic/bipedhardcore317.jpg" width="550" style="display:inline"/>
+    <img src="https://github.com/createamind/DRL/blob/master/video_pic/bipedhardcore319.png" width="550" style="display:inline"/>
 </div>
 
 
