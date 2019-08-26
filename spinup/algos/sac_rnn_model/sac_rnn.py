@@ -89,7 +89,7 @@ Soft Actor-Critic
 
 
 def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-         steps_per_epoch=3000, epochs=100, replay_size=int(1e6), gamma=0.99,
+         steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
          polyak=0.995, lr=6e-4, alpha=0.2, batch_size=150, start_steps=10000,
          max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -490,14 +490,14 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
 if __name__ == '__main__':
-    from OpenGL import GLU
+    # from OpenGL import GLU
     import argparse
-    import roboschool
+    # import roboschool
     from gym_env import EnvWrapper
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
-    parser.add_argument('--env', type=str, default='Pendulum-v0')
+    parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
+    # parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
@@ -511,16 +511,16 @@ if __name__ == '__main__':
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
     parser.add_argument('--repeat', type=int, default=1, help="number of action repeat")
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--beta', type=float, default=0.0)  # starting point of beta
+    parser.add_argument('--beta', type=float, default=0.5)  # starting point of beta
     parser.add_argument('--h0', type=float, default=0.0)
     # parser.add_argument('--model', '-m', action='store_true')  # default is false
     parser.add_argument('--norm', action='store_true')  # default is false
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
-    parser.add_argument('--opt', type=str, default="q")
+    parser.add_argument('--opt', type=str, default="mq")
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'debug_beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,
