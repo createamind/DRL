@@ -140,11 +140,10 @@ def sac1_dynamic_rnn1(x, hc_0, hc_size=128):  # sac1_dynamic_cudnn_rnn
     X       N T D
     s_t_0   N H
     """
-
-    basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=hc_size)
-    # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=h_size)
-    hc_0 = tf.expand_dims(hc_0, 0)
     with tf.variable_scope("rnn", reuse=tf.AUTO_REUSE):
+        basic_cell = tf.contrib.cudnn_rnn.CudnnGRU(num_layers=1, num_units=hc_size)
+        # basic_cell = tf.contrib.cudnn_rnn.CudnnGRUSaveable(num_layers=1, num_units=h_size)
+        hc_0 = tf.expand_dims(hc_0, 0)
         outputs, states = basic_cell(tf.transpose(x, (1, 0, 2)), initial_state=(hc_0,))   # N T D to T N D
     # print(states[0][0])
     return tf.transpose(outputs, (1, 0, 2)), states[0][0]  # N T H  N H
