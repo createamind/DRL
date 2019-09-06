@@ -205,9 +205,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     # # Target value network
     # with tf.variable_scope('target'):
     #     _, _, logp_pi_, _, _, q1_pi_, q2_pi_ = actor_critic(x2_ph, a_ph, **ac_kwargs)
-    # #
     #
-
     ######################################
 
     obs_ph, hc_ph = core.placeholders((Lb + Lt + 1, obs_dim), (hc_dim,))
@@ -236,6 +234,8 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
     for i in range(Lt):
         # Main outputs from computation graph
         with tf.variable_scope('main', reuse=tf.AUTO_REUSE):
+
+    ######################################
             _, _, logp_pi[i], logp_pi2[i], q1[i], q2[i], q1_pi[i], q2_pi[i] = actor_critic(s_ph[:, i],
                                                                                            s2_ph[:, i],
                                                                                            a_ph[:, i],
@@ -571,6 +571,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
+
     parser.add_argument('--reward_scale', type=float, default=1.0)
     parser.add_argument('--act_noise', type=float, default=0.0)
     parser.add_argument('--obs_noise', type=float, default=0.0)
