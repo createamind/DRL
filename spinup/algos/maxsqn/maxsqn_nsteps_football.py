@@ -48,11 +48,11 @@ class ReplayBuffer_N:
     A simple FIFO experience replay buffer for SAC_N_STEP agents.
     """
 
-    def __init__(self, Ln, obs_dim, act_dim, size):
-        self.buffer_o = np.zeros([size, Ln + 1, obs_dim], dtype=np.float32)
-        self.buffer_a = np.zeros([size, Ln, act_dim], dtype=np.float32)
-        self.buffer_r = np.zeros([size, Ln], dtype=np.float32)
-        self.buffer_d = np.zeros([size, Ln], dtype=np.float32)
+    def __init__(self, Ln, obs_shape, act_shape, size):
+        self.buffer_o = np.zeros((size, Ln + 1)+obs_shape, dtype=np.float32)
+        self.buffer_a = np.zeros((size, Ln)+act_shape, dtype=np.float32)
+        self.buffer_r = np.zeros((size, Ln), dtype=np.float32)
+        self.buffer_d = np.zeros((size, Ln), dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
     def store(self, o_queue, a_r_d_queue):
@@ -177,31 +177,35 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
 
     env, test_env = env_fn(3), env_fn(1)
-    # obs_dim = env.observation_space.shape[0]
-    # obs_space = env.observation_space
+    obs_dim = env.observation_space.shape[0]
+    obs_space = env.observation_space
 
-    scenario_obsdim = {'academy_empty_goal':32, 'academy_empty_goal_random':32, 'academy_3_vs_1_with_keeper':44, 'academy_3_vs_1_with_keeper_random':44, 'academy_single_goal_versus_lazy':108}
-    obs_dim = scenario_obsdim[args.env]
-    obs_space = Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
+    # scenario_obsdim = {'academy_empty_goal':32, 'academy_empty_goal_random':32, 'academy_3_vs_1_with_keeper':44, 'academy_3_vs_1_with_keeper_random':44, 'academy_single_goal_versus_lazy':108}
+    # obs_dim = scenario_obsdim[args.env]
+    # obs_space = Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
+    o_shape = obs_space.shape
+
 
     act_dim = env.action_space.n
     act_space = env.action_space
+    a_shape = act_space.shape
 
 
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
-    # a_dim
-    if isinstance(act_space, Box):
-        a_dim = act_dim
-    elif isinstance(act_space, Discrete):
-        a_dim = 1
+    # # a_dim
+    # if isinstance(act_space, Box):
+    #     a_dim = act_dim
+    # elif isinstance(act_space, Discrete):
+    #     a_dim = 1
 
 
     # Inputs to computation graph
     # x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
-
-    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders((obs_dim,), (Ln, a_dim), (Ln, obs_dim), (Ln,), (Ln,))
+    # global x2_ph
+    x_ph, a_ph, x2_ph,  = core.placeholders(o_shape, a_shape, o_shape)
+    r_ph, d_ph, logp_pi_ph = core.placeholders((Ln,), (Ln,), (Ln,))
 
     ######
     if alpha == 'auto':
@@ -217,14 +221,13 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     # Main outputs from computation graph
     with tf.variable_scope('main'):
         mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu = actor_critic(x_ph, x2_ph, a_ph, alpha, **ac_kwargs)
-
     # Target value network
     with tf.variable_scope('target'):
         _, _, logp_pi_, _,  _, _,q1_pi_, q2_pi_,q1_mu_, q2_mu_= actor_critic(x2_ph, x2_ph, a_ph, alpha, **ac_kwargs)
 
 
     # Experience buffer
-    replay_buffer_nstep= ReplayBuffer_N(Ln=Ln, obs_dim=obs_dim, act_dim=a_dim, size=replay_size)
+    replay_buffer_nstep= ReplayBuffer_N(Ln=Ln, obs_shape=o_shape, act_shape=a_shape, size=replay_size)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
@@ -242,22 +245,24 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 ######
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
-    # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
+    # min_q_pi = tf.minimum(q1_pi_, q2_pi_)        # x2
+    min_q_pi = tf.minimum(q1_mu_, q2_mu_)
 
     # min_q_pi = tf.clip_by_value(min_q_pi, 0.0, 200.0)
 
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)  ############################## alpha=0
-    q_backup = r_ph + gamma*(1-d_ph)*v_backup
-
+    # v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)  ############################## alpha=0
+    # q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
     #### n-step backup
     q_backup = tf.stop_gradient(min_q_pi)
-    for _ in Ln:
-        q_backup = r_ph + gamma*(1-d_ph)*(- alpha * logp_pi2  +q_backup)
+    for step_i in reversed(range(Ln)):
+        q_backup = r_ph[:,step_i] + gamma*(1-d_ph[:,step_i])*(-alpha * logp_pi_ph[:,step_i]   + q_backup)
     ####
+
+
+
 
     # Soft actor-critic losses
     q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
@@ -316,12 +321,13 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
 
 
-
-
-
-    def get_entropy_q12(x2):
+    def get_logp_pi(x):
+        logp_pi = []
         for Ln_i in range(Ln):
-            return sess.run((logp_pi2, q1_pi_, q2_pi_), feed_dict={x_ph: x2[:,Ln_i]})
+            logp_pi.append( sess.run(logp_pi2, feed_dict={x2_ph: x[:,Ln_i+1]}) )
+        batch_logp_pi = np.stack(logp_pi, axis=1)    # or np.swapaxes(np.array(entropy), 0, 1)
+        return batch_logp_pi
+
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
@@ -332,7 +338,8 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     ##############################  test  ############################
 
     if args.is_test:
-        test_env = football_env.create_environment(env_name=args.env, representation='simple115', with_checkpoints=False, render=True)
+        # test_env = football_env.create_environment(env_name=args.env, representation='simple115', with_checkpoints=False, render=True)
+        test_env = gym.make(args.env)
         ave_ep_ret = 0
         for j in range(10000):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
@@ -439,7 +446,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
         #################################### deques store
 
-        a_r_d_queue.append( ( np.array(a).reshape((a_dim,)), r, d,) )
+        a_r_d_queue.append( (a, r, d,) )
         o_queue.append((o2,))
 
         if t_queue % Ln == 0:
@@ -447,7 +454,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
         if d and t_queue % Ln != 0:
             for _0 in range(Ln - t_queue % Ln):
-                a_r_d_queue.append((np.zeros((a_dim,), dtype=np.float32), 0.0, True,))
+                a_r_d_queue.append((np.zeros(a_shape, dtype=np.float32), 0.0, True,))
                 o_queue.append((np.zeros((obs_dim,), dtype=np.float32), ))
             replay_buffer_nstep.store(o_queue, a_r_d_queue)
 
@@ -469,9 +476,11 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
             """
             for j in range(ep_len):
                 batch = replay_buffer_nstep.sample_batch(batch_size)
-                feed_dict = {x_ph: batch['obs1'],
-                             x2_ph: batch['obs2'],
-                             a_ph: batch['acts'],
+                batch_logp_pi = get_logp_pi(batch['obs'])
+                feed_dict = {x_ph: batch['obs'][:,0],
+                             x2_ph: batch['obs'][:,-1],
+                             a_ph: batch['acts'][:,0],
+                             logp_pi_ph: batch_logp_pi,
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
                             }
@@ -551,30 +560,31 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     #  {'academy_empty_goal':32, 'academy_3_vs_1_with_keeper':44, 'academy_single_goal_versus_lazy':108}
-    parser.add_argument('--env', type=str, default='academy_3_vs_1_with_keeper_random')
+    parser.add_argument('--env', type=str, default='LunarLander-v2')#'academy_3_vs_1_with_keeper_random')
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
-    parser.add_argument('--save_freq', type=int, default=40)
+    parser.add_argument('--save_freq', type=int, default=10)
     parser.add_argument('--is_restore_train', type=bool, default=False)
 
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_determin', type=bool, default=True)
-    parser.add_argument('--test_render', type=bool, default=False)
+    parser.add_argument('--test_render', type=bool, default=True)
 
     # replay_size, steps_per_epoch, batch_size, start_steps, save_freq
 
-    parser.add_argument('--replay_size', type=int, default=int(5e6))
-    parser.add_argument('--net', type=list, default=[600,400,200])
-    parser.add_argument('--batch_size', type=int, default=300)
-    parser.add_argument('--start_steps', type=int, default=int(3e4))
+    parser.add_argument('--replay_size', type=int, default=int(1e6))
+    parser.add_argument('--Ln', type=int, default=3)
+    parser.add_argument('--net', type=list, default=[400,300])
+    parser.add_argument('--batch_size', type=int, default=200)
+    parser.add_argument('--start_steps', type=int, default=int(1e4))
 
-    parser.add_argument('--gamma', type=float, default=0.997)
+    parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)  # maxsqn_football100_a 790, maxsqn_football100_b 110
 
-    parser.add_argument('--max_ep_len', type=int, default=170)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='debug')#'3v1_scale200_repeat2_c_True')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--exp_name', type=str, default='debug0.1_max_Ln3')#'3v1_scale200_repeat2_c_True')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -636,11 +646,33 @@ if __name__ == '__main__':
 
 
     # academy_empty_goal academy_empty_goal_close
-    env0 = football_env.create_environment(env_name=args.env, representation='simple115', with_checkpoints=False, render=False)
-    env_1 = FootballWrapper(env0)
-    env_3 = env_1
+    # env0 = football_env.create_environment(env_name=args.env, representation='simple115', with_checkpoints=False, render=False)
+    # env_1 = FootballWrapper(env0)
+
+
+
+    class Wrapper(object):
+
+        def __init__(self, env, action_repeat):
+            self._env = env
+            self.action_repeat = action_repeat
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def step(self, action):
+            r = 0.0
+            for _ in range(self.action_repeat):
+                obs_, reward_, done_, info_ = self._env.step(action)
+                reward_ = reward_ if reward_ > -99.0 else 0.0
+                r = r + reward_
+                if done_:
+                    return obs_, r, done_, info_
+            return obs_, r, done_, info_
+    env_1 = gym.make(args.env)
+    env_3 = Wrapper(gym.make(args.env),1)
     maxsqn(args, lambda n : env_3 if n==3 else env_1, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=args.net), replay_size=args.replay_size, steps_per_epoch=args.steps_per_epoch,
-        batch_size=args.batch_size, start_steps=args.start_steps, save_freq=args.save_freq,
+        batch_size=args.batch_size, start_steps=args.start_steps, save_freq=args.save_freq, Ln=args.Ln,
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)

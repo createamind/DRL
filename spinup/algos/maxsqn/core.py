@@ -8,10 +8,10 @@ EPS = 1e-8
 def placeholder(dim=None):
     if dim is None:
         return tf.placeholder(dtype=tf.float32, shape=(None,))
-    elif isinstance(dim, Number):
-        return tf.placeholder(dtype=tf.float32, shape=(None, dim))
+    elif len(dim)==0:
+        return tf.placeholder(dtype=tf.int32, shape=((None,) + dim))       # for Discrete
     else:
-        return tf.placeholder(dtype=tf.float32, shape=((None,) + dim))
+        return tf.placeholder(dtype=tf.float32, shape=((None,) + dim))     # for Box
 
 def placeholders(*args):
     return [placeholder(dim) for dim in args]
@@ -79,7 +79,7 @@ def mlp_actor_critic(x, x2,  a, alpha, hidden_sizes=(400,300), activation=tf.nn.
         x = (x - 128.0) / 128.0          # x: shape(?,128)
 
     act_dim = action_space.n
-    a_one_hot = tf.one_hot(a[...,0], depth=act_dim)      # shape(?,4)
+    a_one_hot = tf.one_hot(a, depth=act_dim)      # shape(?,4)
     #vfs
     vf_mlp = lambda x: mlp(x, list(hidden_sizes) + [act_dim], activation, None)     # return: shape(?,4)
 
