@@ -453,7 +453,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=40)
-    parser.add_argument('--is_restore_train', type=bool, default=True)
+    parser.add_argument('--is_restore_train', type=bool, default=False)
 
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_determin', type=bool, default=True)
@@ -472,7 +472,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len', type=int, default=170)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='3v1_scale200_repeat2_c_True')#'3v1_350_scale100_auto0.5_random_3')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='debug')#'3v1_scale200_repeat2_c_True')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs

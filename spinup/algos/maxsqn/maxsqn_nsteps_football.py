@@ -7,6 +7,9 @@ from spinup.algos.maxsqn import core
 from spinup.algos.maxsqn.core import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
+from collections import deque
+
+
 
 class ReplayBuffer:
     """
@@ -38,6 +41,41 @@ class ReplayBuffer:
                     rews=self.rews_buf[idxs],
                     done=self.done_buf[idxs])
 
+
+
+class ReplayBuffer_N:
+    """
+    A simple FIFO experience replay buffer for SAC_N_STEP agents.
+    """
+
+    def __init__(self, Ln, obs_dim, act_dim, size):
+        self.buffer_o = np.zeros([size, Ln + 1, obs_dim], dtype=np.float32)
+        self.buffer_a = np.zeros([size, Ln, act_dim], dtype=np.float32)
+        self.buffer_r = np.zeros([size, Ln], dtype=np.float32)
+        self.buffer_d = np.zeros([size, Ln], dtype=np.float32)
+        self.ptr, self.size, self.max_size = 0, 0, size
+
+    def store(self, o_queue, a_r_d_queue):
+        obs, = np.stack(o_queue, axis=1)
+        self.buffer_o[self.ptr] = np.array(list(obs), dtype=np.float32)
+
+        a, r, d, = np.stack(a_r_d_queue, axis=1)
+        self.buffer_a[self.ptr] = np.array(list(a), dtype=np.float32)
+        self.buffer_r[self.ptr] = np.array(list(r), dtype=np.float32)
+        self.buffer_d[self.ptr] = np.array(list(d), dtype=np.float32)
+
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
+
+    def sample_batch(self, batch_size=32):
+        idxs = np.random.randint(0, self.size, size=batch_size)
+        return dict(obs=self.buffer_o[idxs],
+                    acts=self.buffer_a[idxs],
+                    rews=self.buffer_r[idxs],
+                    done=self.buffer_d[idxs],)
+
+
+
 """
 
 Soft Actor-Critic
@@ -49,7 +87,7 @@ Soft Actor-Critic
 """ make sure: max_ep_len < steps_per_epoch """
 
 def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=100, replay_size=int(5e6), gamma=0.99,
+        steps_per_epoch=5000, epochs=100, replay_size=int(5e6), gamma=0.99, Ln=3,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=256, start_steps=20000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -153,9 +191,17 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     # Share information about action space with policy architecture
     ac_kwargs['action_space'] = env.action_space
 
-    # Inputs to computation graph
-    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
+    # a_dim
+    if isinstance(act_space, Box):
+        a_dim = act_dim
+    elif isinstance(act_space, Discrete):
+        a_dim = 1
 
+
+    # Inputs to computation graph
+    # x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
+
+    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders((obs_dim,), (Ln, a_dim), (Ln, obs_dim), (Ln,), (Ln,))
 
     ######
     if alpha == 'auto':
@@ -170,18 +216,15 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu = actor_critic(x_ph,x2_ph, a_ph, alpha, **ac_kwargs)
+        mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu = actor_critic(x_ph, x2_ph, a_ph, alpha, **ac_kwargs)
 
     # Target value network
     with tf.variable_scope('target'):
-        _, _, logp_pi_, _,  _, _,q1_pi_, q2_pi_,q1_mu_, q2_mu_= actor_critic(x2_ph, x2_ph,a_ph, alpha,  **ac_kwargs)
+        _, _, logp_pi_, _,  _, _,q1_pi_, q2_pi_,q1_mu_, q2_mu_= actor_critic(x2_ph, x2_ph, a_ph, alpha, **ac_kwargs)
+
 
     # Experience buffer
-    if isinstance(act_space, Box):
-        a_dim = act_dim
-    elif isinstance(act_space, Discrete):
-        a_dim = 1
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=a_dim, size=replay_size)
+    replay_buffer_nstep= ReplayBuffer_N(Ln=Ln, obs_dim=obs_dim, act_dim=a_dim, size=replay_size)
 
     # Count variables
     var_counts = tuple(core.count_vars(scope) for scope in
@@ -209,6 +252,12 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)  ############################## alpha=0
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
+
+    #### n-step backup
+    q_backup = tf.stop_gradient(min_q_pi)
+    for _ in Ln:
+        q_backup = r_ph + gamma*(1-d_ph)*(- alpha * logp_pi2  +q_backup)
+    ####
 
     # Soft actor-critic losses
     q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
@@ -266,6 +315,14 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
             print("Model restored.")
 
 
+
+
+
+
+    def get_entropy_q12(x2):
+        for Ln_i in range(Ln):
+            return sess.run((logp_pi2, q1_pi_, q2_pi_), feed_dict={x_ph: x2[:,Ln_i]})
+
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
@@ -305,6 +362,16 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
                 ep_len += 1
             logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
 
+
+
+    ################################## deques
+
+    o_queue = deque([], maxlen=Ln + 1)
+    a_r_d_queue = deque([], maxlen=Ln)
+
+    ################################## deques
+
+
     start_time = time.time()
 
 
@@ -313,6 +380,11 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
 
+    ################################## deques reset
+    t_queue = 1
+    o_queue.append((o,))
+
+    ################################## deques reset
 
     total_steps = steps_per_epoch * epochs
 
@@ -357,12 +429,34 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
         # d_store = True if r == 1.0 else False
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d)
+        # replay_buffer.store(o, a, r, o2, d)
         # print(a,r,d)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
         o = o2
+
+
+        #################################### deques store
+
+        a_r_d_queue.append( ( np.array(a).reshape((a_dim,)), r, d,) )
+        o_queue.append((o2,))
+
+        if t_queue % Ln == 0:
+            replay_buffer_nstep.store(o_queue, a_r_d_queue)
+
+        if d and t_queue % Ln != 0:
+            for _0 in range(Ln - t_queue % Ln):
+                a_r_d_queue.append((np.zeros((a_dim,), dtype=np.float32), 0.0, True,))
+                o_queue.append((np.zeros((obs_dim,), dtype=np.float32), ))
+            replay_buffer_nstep.store(o_queue, a_r_d_queue)
+
+        t_queue += 1
+
+        #################################### deques store
+
+
+
 
         # End of episode. Training (ep_len times).
         if d or (ep_len == max_ep_len):   # make sure: max_ep_len < steps_per_epoch
@@ -374,7 +468,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
             original paper.
             """
             for j in range(ep_len):
-                batch = replay_buffer.sample_batch(batch_size)
+                batch = replay_buffer_nstep.sample_batch(batch_size)
                 feed_dict = {x_ph: batch['obs1'],
                              x2_ph: batch['obs2'],
                              a_ph: batch['acts'],
@@ -441,6 +535,14 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
             # o, r, d, ep_ret, ep_len = env.step(1)[0], 0, False, 0, 0     #####################
             o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
+            ################################## deques reset
+            t_queue = 1
+            o_queue.append((o,))
+
+            ################################## deques reset
+
+
+
         if t > 0 and t % steps_per_epoch == 0:
             is_wrap = True
 
@@ -453,7 +555,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=40)
-    parser.add_argument('--is_restore_train', type=bool, default=True)
+    parser.add_argument('--is_restore_train', type=bool, default=False)
 
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_determin', type=bool, default=True)
@@ -472,7 +574,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len', type=int, default=170)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='3v1_scale200_repeat2_c_True')#'3v1_350_scale100_auto0.5_random_3')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='debug')#'3v1_scale200_repeat2_c_True')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs

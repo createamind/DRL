@@ -1,11 +1,18 @@
 import numpy as np
 import tensorflow as tf
 from gym.spaces import Box, Discrete
+from numbers import Number
 
 EPS = 1e-8
 
 def placeholder(dim=None):
-    return tf.placeholder(dtype=tf.float32, shape=(None,dim) if dim else (None,))
+    if dim is None:
+        return tf.placeholder(dtype=tf.float32, shape=(None,))
+    elif isinstance(dim, Number):
+        return tf.placeholder(dtype=tf.float32, shape=(None, dim))
+    else:
+        return tf.placeholder(dtype=tf.float32, shape=((None,) + dim))
+
 def placeholders(*args):
     return [placeholder(dim) for dim in args]
 
