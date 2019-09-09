@@ -179,16 +179,12 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
 
     env, test_env = env_fn(3), env_fn(1)
+    obs_dim = env.observation_space.shape[0]
+    obs_space = env.observation_space
 
-    # # gym env
-    # obs_dim = env.observation_space.shape[0]
-    # obs_space = env.observation_space
-    # google football
-    scenario_obsdim = {'academy_empty_goal':32, 'academy_empty_goal_random':32, 'academy_3_vs_1_with_keeper':44, 'academy_3_vs_1_with_keeper_random':44, 'academy_single_goal_versus_lazy':108}
-    obs_dim = scenario_obsdim[args.env]
-    obs_space = Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
-
-
+    # scenario_obsdim = {'academy_empty_goal':32, 'academy_empty_goal_random':32, 'academy_3_vs_1_with_keeper':44, 'academy_3_vs_1_with_keeper_random':44, 'academy_single_goal_versus_lazy':108}
+    # obs_dim = scenario_obsdim[args.env]
+    # obs_space = Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
     o_shape = obs_space.shape
 
 
@@ -297,11 +293,9 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     if isinstance(alpha, Number):
         step_ops = [q1_loss, q2_loss, q1, q2, logp_pi_, tf.identity(alpha),
                 train_value_op, target_update]
-        step_ops_notraining = [q1_loss, q2_loss, q1, q2, logp_pi_, tf.identity(alpha)]
     else:
         step_ops = [q1_loss, q2_loss, q1, q2, logp_pi_, alpha,
                 train_value_op, target_update, train_alpha_op]
-        step_ops_notraining = [q1_loss, q2_loss, q1, q2, logp_pi_, alpha]
 
     # Initializing targets to match main variables
     target_init = tf.group([tf.assign(v_targ, v_main)
@@ -493,11 +487,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
                              d_ph: batch['done'],
                             }
                 # step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
-                if  t > start_steps:
-                    outs = sess.run(step_ops, feed_dict)
-                else:
-                    outs = sess.run(step_ops_notraining, feed_dict)
-
+                outs = sess.run(step_ops, feed_dict)
                 logger.store(LossQ1=outs[0], LossQ2=outs[1],
                             Q1Vals=outs[2], Q2Vals=outs[3],
                             LogPi=outs[4], Alpha=outs[5])
@@ -572,7 +562,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     #  {'academy_empty_goal':32, 'academy_3_vs_1_with_keeper':44, 'academy_single_goal_versus_lazy':108}
-    parser.add_argument('--env', type=str, default='academy_3_vs_1_with_keeper_random')#'academy_3_vs_1_with_keeper_random')
+    parser.add_argument('--env', type=str, default='LunarLander-v2')#'academy_3_vs_1_with_keeper_random')
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=10)
@@ -584,19 +574,19 @@ if __name__ == '__main__':
 
     # replay_size, steps_per_epoch, batch_size, start_steps, save_freq
 
-    parser.add_argument('--replay_size', type=int, default=int(2e6))
+    parser.add_argument('--replay_size', type=int, default=int(1e6))
     parser.add_argument('--Ln', type=int, default=3)
-    parser.add_argument('--net', type=list, default=[600,400,200])
+    parser.add_argument('--net', type=list, default=[400,300])
     parser.add_argument('--batch_size', type=int, default=200)
-    parser.add_argument('--start_steps', type=int, default=int(3e4))
+    parser.add_argument('--start_steps', type=int, default=int(1e4))
 
-    parser.add_argument('--gamma', type=float, default=0.997)
+    parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)  # maxsqn_football100_a 790, maxsqn_football100_b 110
 
-    parser.add_argument('--max_ep_len', type=int, default=170)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--max_ep_len', type=int, default=1000)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--exp_name', type=str, default='debug_mu_3v1_random_scale150')#'3v1_scale200_repeat2_c_True')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--exp_name', type=str, default='debug0.1_max_Ln3')#'3v1_scale200_repeat2_c_True')#'1_academy_empty_goal_random_seed0')#'1_academy_empty_goal_0-0')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -638,9 +628,9 @@ if __name__ == '__main__':
                 r += reward
 
                 if done:
-                    return obs, r * 150, done, info
+                    return obs, r * 200, done, info
 
-            return obs, r*150, done, info
+            return obs, r*200, done, info
 
         def incentive1(self, obs):
             who_controls_ball = obs[7:9]
@@ -658,34 +648,31 @@ if __name__ == '__main__':
 
 
     # academy_empty_goal academy_empty_goal_close
-    env0 = football_env.create_environment(env_name=args.env, representation='simple115', with_checkpoints=False, render=False)
-    env_1 = FootballWrapper(env0)
-    env_3 = env_1
-
-
-    # class Wrapper(object):
-    #
-    #     def __init__(self, env, action_repeat):
-    #         self._env = env
-    #         self.action_repeat = action_repeat
-    #
-    #     def __getattr__(self, name):
-    #         return getattr(self._env, name)
-    #
-    #     def step(self, action):
-    #         r = 0.0
-    #         for _ in range(self.action_repeat):
-    #             obs_, reward_, done_, info_ = self._env.step(action)
-    #             reward_ = reward_ if reward_ > -99.0 else 0.0
-    #             r = r + reward_
-    #             if done_:
-    #                 return obs_, r, done_, info_
-    #         return obs_, r, done_, info_
-    # env_1 = gym.make(args.env)
-    # env_3 = Wrapper(gym.make(args.env),1)
+    # env0 = football_env.create_environment(env_name=args.env, representation='simple115', with_checkpoints=False, render=False)
+    # env_1 = FootballWrapper(env0)
 
 
 
+    class Wrapper(object):
+
+        def __init__(self, env, action_repeat):
+            self._env = env
+            self.action_repeat = action_repeat
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def step(self, action):
+            r = 0.0
+            for _ in range(self.action_repeat):
+                obs_, reward_, done_, info_ = self._env.step(action)
+                reward_ = reward_ if reward_ > -99.0 else 0.0
+                r = r + reward_
+                if done_:
+                    return obs_, r, done_, info_
+            return obs_, r, done_, info_
+    env_1 = gym.make(args.env)
+    env_3 = Wrapper(gym.make(args.env),1)
     maxsqn(args, lambda n : env_3 if n==3 else env_1, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=args.net), replay_size=args.replay_size, steps_per_epoch=args.steps_per_epoch,
         batch_size=args.batch_size, start_steps=args.start_steps, save_freq=args.save_freq, Ln=args.Ln,
