@@ -185,6 +185,8 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     # obs_space = env.observation_space
     # google football
     scenario_obsdim = {'academy_empty_goal':32, 'academy_empty_goal_random':32, 'academy_3_vs_1_with_keeper':44, 'academy_3_vs_1_with_keeper_random':44, 'academy_single_goal_versus_lazy':108}
+    scenario_obsdim['academy_single_goal_versus_lazy'] = 108
+    scenario_obsdim['academy_single_goal_versus_lazy_random'] = 108
     obs_dim = scenario_obsdim[args.env]
     obs_space = Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
 
@@ -572,7 +574,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     #  {'academy_empty_goal':32, 'academy_3_vs_1_with_keeper':44, 'academy_single_goal_versus_lazy':108}
-    parser.add_argument('--env', type=str, default='academy_3_vs_1_with_keeper_random')#'academy_3_vs_1_with_keeper_random')
+    parser.add_argument('--env', type=str, default='academy_single_goal_versus_lazy_random') # 'academy_3_vs_1_with_keeper_random')#
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=10)
@@ -593,10 +595,10 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.997)
     parser.add_argument('--seed', '-s', type=int, default=0)  # maxsqn_football100_a 790, maxsqn_football100_b 110
 
-    parser.add_argument('--max_ep_len', type=int, default=350)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--max_ep_len', type=int, default=500)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='pi_3v1_auto_random')#'debug_pi_auto0.5_3v1_random')#'3v1_scale200_repeat2_c_True')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -610,15 +612,15 @@ if __name__ == '__main__':
 
         def __init__(self, env):
             self._env = env
+            self.dis_to_goal = 0.0
 
         def __getattr__(self, name):
             return getattr(self._env, name)
 
-        # def reset(self):
-        #     obs = self._env.reset()
-        #     if obs[0] > 0.5:
-        #         obs, _, _, _ = self._env.step(12)
-        #     return obs
+        def reset(self):
+            obs = self._env.reset()
+            self.dis_to_goal = np.linalg.norm(obs[0:2] - [1.05, 0.0])
+            return obs
 
         def step(self, action):
             r = 0.0
@@ -632,15 +634,26 @@ if __name__ == '__main__':
                     reward = 0.0
                 # reward -= 0.00175
                 # reward += (0.5*obs[0] + (0.5-np.abs(obs[1])))*0.001
-                if obs[24] < 0.0:
-                    done = True
-                # reward = reward + self.incentive1(obs)
+                # if obs[0] < 0.0:
+                #     done = True
+
+
+                if not done:   # when env is done, ball position will be reset.
+                    reward += self.incentive(obs)
+
                 r += reward
 
                 if done:
-                    return obs, r * 150, done, info
+                    return obs, r * 100, done, info
 
-            return obs, r*150, done, info
+            return obs, r*100, done, info
+
+        def incentive(self, obs):
+            # total accumulative incentive reward is around 1.0
+            dis_to_goal_new = np.linalg.norm(obs[0:2] - [1.05, 0.0])
+            r = 0.5*(self.dis_to_goal - dis_to_goal_new)
+            self.dis_to_goal = dis_to_goal_new
+            return r
 
         def incentive1(self, obs):
             who_controls_ball = obs[7:9]
