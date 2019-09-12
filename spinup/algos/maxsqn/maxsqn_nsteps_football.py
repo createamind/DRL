@@ -259,7 +259,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
         min_q_pi = tf.minimum(q1_pi_, q2_pi_)        # x2
 
 
-    # min_q_pi = tf.clip_by_value(min_q_pi, 0.0, 200.0)
+    # min_q_pi = tf.clip_by_value(min_q_pi, -200.0, 300.0)
 
 
     # Targets for Q and V regression
@@ -581,9 +581,9 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=10)
-    parser.add_argument('--is_restore_train', type=bool, default=True)
+    parser.add_argument('--is_restore_train', type=bool, default=False)
 
-    parser.add_argument('--is_test', type=bool, default=True)
+    parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_determin', type=bool, default=True)
     parser.add_argument('--test_render', type=bool, default=False)
 
@@ -591,14 +591,14 @@ if __name__ == '__main__':
 
     parser.add_argument('--replay_size', type=int, default=int(3e6))
     parser.add_argument('--Ln', type=int, default=2)
-    parser.add_argument('--net', type=list, default=[600,400,200])
+    parser.add_argument('--net', type=list, default=[400,600,400,200])
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--start_steps', type=int, default=int(3e4))
 
     parser.add_argument('--gamma', type=float, default=0.997)
     parser.add_argument('--seed', '-s', type=int, default=0)  # maxsqn_football100_a 790, maxsqn_football100_b 110
 
-    parser.add_argument('--max_ep_len', type=int, default=500)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--max_ep_len', type=int, default=300)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--target_entropy', type=float, default=0.4)
     parser.add_argument('--use_max', type=bool, default=True)
@@ -655,7 +655,7 @@ if __name__ == '__main__':
 
         def incentive(self, obs):
             # total accumulative incentive reward is around 1.0
-            dis_to_goal_new = np.linalg.norm(obs[0:2] - [1.05, 0.0])
+            dis_to_goal_new = np.linalg.norm(obs[0:2] - [1.01, 0.0])
             r = 0.5*(self.dis_to_goal - dis_to_goal_new)
             self.dis_to_goal = dis_to_goal_new
             return r
