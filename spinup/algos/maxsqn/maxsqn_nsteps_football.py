@@ -258,8 +258,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     else:
         min_q_pi = tf.minimum(q1_pi_, q2_pi_)        # x2
 
-
-    # min_q_pi = tf.clip_by_value(min_q_pi, -200.0, 300.0)
+    min_q_pi = tf.clip_by_value(min_q_pi, -200.0, 300.0)
 
 
     # Targets for Q and V regression
@@ -603,7 +602,7 @@ if __name__ == '__main__':
     parser.add_argument('--target_entropy', type=float, default=0.4)
     parser.add_argument('--use_max', type=bool, default=True)
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive_max') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive1_max') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -638,33 +637,30 @@ if __name__ == '__main__':
                 if reward < 0.0:
                     reward = 0.0
                 # reward -= 0.00175
-                # reward += (0.5*obs[0] + (0.5-np.abs(obs[1])))*0.001
+
                 # if obs[0] < 0.0:
                 #     done = True
 
-
                 if not done:   # when env is done, ball position will be reset.
-                    reward += self.incentive(obs)
+                    reward += self.incentive1(obs)
 
                 r += reward
 
                 if done:
-                    return obs, r * 100, done, info
+                    return obs, r * 150, done, info
 
-            return obs, r*100, done, info
+            return obs, r*150, done, info
 
         def incentive(self, obs):
-            # total accumulative incentive reward is around 1.0
+            # total accumulative incentive reward is around 0.2
             dis_to_goal_new = np.linalg.norm(obs[0:2] - [1.01, 0.0])
-            r = 0.5*(self.dis_to_goal - dis_to_goal_new)
+            r = 0.1*(self.dis_to_goal - dis_to_goal_new)
             self.dis_to_goal = dis_to_goal_new
             return r
 
         def incentive1(self, obs):
-            who_controls_ball = obs[7:9]
-            pos_ball = obs[0:2]
-            distance_to_goal =np.array([np.exp(-np.linalg.norm(pos_ball-[1.01,0])), -np.exp(-np.linalg.norm(pos_ball-[-1.01,0]))])
-            r = np.dot(who_controls_ball,distance_to_goal)*0.003
+            r = -self.dis_to_goal*(1e-4)   # punishment weighted by dis_to_goal
+            self.dis_to_goal = np.linalg.norm(obs[0:2] - [1.01, 0.0])  # interval: 0.0 ~ 2.0
             return r
 
         def incentive2(self, obs):
