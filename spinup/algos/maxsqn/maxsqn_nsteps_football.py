@@ -583,7 +583,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_freq', type=int, default=10)
     parser.add_argument('--is_restore_train', type=bool, default=True)
 
-    parser.add_argument('--is_test', type=bool, default=False)
+    parser.add_argument('--is_test', type=bool, default=True)
     parser.add_argument('--test_determin', type=bool, default=True)
     parser.add_argument('--test_render', type=bool, default=False)
 
@@ -624,7 +624,7 @@ if __name__ == '__main__':
 
         def reset(self):
             obs = self._env.reset()
-            self.dis_to_goal = np.linalg.norm(obs[0:2] - [1.05, 0.0])
+            self.dis_to_goal = np.linalg.norm(obs[0:2] - [1.0, 0.0])
             return obs
 
         def step(self, action):
