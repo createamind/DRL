@@ -600,9 +600,9 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len', type=int, default=300)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--target_entropy', type=float, default=0.4)
-    parser.add_argument('--use_max', type=bool, default=True)
+    parser.add_argument('--use_max', type=bool, default=False)
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive1_max') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='lazy_random') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
@@ -641,8 +641,8 @@ if __name__ == '__main__':
                 # if obs[0] < 0.0:
                 #     done = True
 
-                if not done:   # when env is done, ball position will be reset.
-                    reward += self.incentive1(obs)
+                # if not done:   # when env is done, ball position will be reset.
+                #     reward += self.incentive1(obs)
 
                 r += reward
 
