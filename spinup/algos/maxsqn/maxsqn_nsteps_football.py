@@ -420,7 +420,7 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
         use the learned policy. 
         """
         # if t > start_steps and 100*t/total_steps > np.random.random(): # greedy, avoid falling into sub-optimum
-        if t > start_steps:
+        if t > start_steps or args.is_restore_train:
             a = get_action(o)
         else:
             a = env.action_space.sample()
@@ -577,11 +577,11 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     #  {'academy_empty_goal':32, 'academy_3_vs_1_with_keeper':44, 'academy_single_goal_versus_lazy':108}
-    parser.add_argument('--env', type=str, default='academy_3_vs_1_with_keeper_random')#'academy_single_goal_versus_lazy_random') #
+    parser.add_argument('--env', type=str, default='academy_single_goal_versus_lazy_random') #'academy_3_vs_1_with_keeper_random')#
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=10)
-    parser.add_argument('--is_restore_train', type=bool, default=False)
+    parser.add_argument('--is_restore_train', type=bool, default=True)
 
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_determin', type=bool, default=True)
@@ -589,10 +589,10 @@ if __name__ == '__main__':
 
     # replay_size, steps_per_epoch, batch_size, start_steps, save_freq
 
-    parser.add_argument('--replay_size', type=int, default=int(2e6))
+    parser.add_argument('--replay_size', type=int, default=int(3e6))
     parser.add_argument('--Ln', type=int, default=2)
     parser.add_argument('--net', type=list, default=[600,400,200])
-    parser.add_argument('--batch_size', type=int, default=200)
+    parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--start_steps', type=int, default=int(3e4))
 
     parser.add_argument('--gamma', type=float, default=0.997)
@@ -601,9 +601,9 @@ if __name__ == '__main__':
     parser.add_argument('--max_ep_len', type=int, default=500)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--target_entropy', type=float, default=0.4)
-    parser.add_argument('--use_max', type=bool, default=False)
+    parser.add_argument('--use_max', type=bool, default=True)
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='3v1_random_incentive') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive_max') #'pi_3v1_auto_random')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
