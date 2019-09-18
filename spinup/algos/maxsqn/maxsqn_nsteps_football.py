@@ -197,8 +197,8 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
 
     act_dim = env.action_space.n
-    act_space = env.action_space
-    a_shape = act_space.shape
+    act_space = env.action_space   # Discrete(21) for gfootball
+    a_shape = act_space.shape      # ()
 
 
     # Share information about action space with policy architecture
@@ -604,7 +604,7 @@ if __name__ == '__main__':
     parser.add_argument('--target_entropy', type=float, default=0.4)
     parser.add_argument('--use_max', type=bool, default=False)
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive') #'lazy_random_incentive')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive_debug') #'lazy_random_incentive')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
