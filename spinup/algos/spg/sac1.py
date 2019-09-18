@@ -55,7 +55,7 @@ Soft Actor-Critic
 (With slight variations that bring it closer to TD3)
 
 """
-def spg(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(2e6), gamma=0.99, reward_scale=1.0,
         polyak=0.995, lr=5e-4, alpha=0.2, batch_size=200, start_steps=10000,
         max_ep_len_train=1000, max_ep_len_test=1000, logger_kwargs=dict(), save_freq=1):
@@ -482,7 +482,7 @@ if __name__ == '__main__':
     # env1 = Wrapper(gym.make(args.env), 1)
     env1 = gym.make(args.env)
 
-    spg(args, lambda n : env3 if n==3 else env1, actor_critic=core.mlp_actor_critic,
+    sac1(args, lambda n : env3 if n==3 else env1, actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[400,300]), start_steps = args.start_steps,
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha,
         logger_kwargs=logger_kwargs, lr = args.lr, reward_scale=args.reward_scale,
