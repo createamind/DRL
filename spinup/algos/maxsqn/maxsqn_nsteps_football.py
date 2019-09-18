@@ -187,6 +187,8 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
     scenario_obsdim = {'academy_empty_goal':32, 'academy_empty_goal_random':32, 'academy_3_vs_1_with_keeper':44, 'academy_3_vs_1_with_keeper_random':44, 'academy_single_goal_versus_lazy':108}
     scenario_obsdim['academy_single_goal_versus_lazy'] = 108
     scenario_obsdim['academy_single_goal_versus_lazy_random'] = 108
+    scenario_obsdim['11_vs_11_stochastic']= 108
+    scenario_obsdim['11_vs_11_stochastic_random'] = 108
     obs_dim = scenario_obsdim[args.env]
     obs_space = Box(low=-1.0, high=1.0, shape=(obs_dim,), dtype=np.float32)
 
@@ -334,10 +336,10 @@ def maxsqn(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), s
 
 
     def get_logp_pi(x):
-        logp_pi = []
+        logp_pi_s = []
         for Ln_i in range(Ln):
-            logp_pi.append( sess.run(logp_pi2, feed_dict={x2_ph: x[:,Ln_i+1]}) )
-        batch_logp_pi = np.stack(logp_pi, axis=1)    # or np.swapaxes(np.array(entropy), 0, 1)
+            logp_pi_s.append( sess.run(logp_pi2, feed_dict={x2_ph: x[:,Ln_i+1]}) )
+        batch_logp_pi = np.stack(logp_pi_s, axis=1)    # or np.swapaxes(np.array(entropy), 0, 1)
         return batch_logp_pi
 
 
@@ -576,13 +578,13 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     #  {'academy_empty_goal':32, 'academy_3_vs_1_with_keeper':44, 'academy_single_goal_versus_lazy':108}
-    parser.add_argument('--env', type=str, default='academy_single_goal_versus_lazy_random') #'academy_3_vs_1_with_keeper_random')#
+    parser.add_argument('--env', type=str, default='11_vs_11_stochastic_random') #'academy_3_vs_1_with_keeper_random')#
     parser.add_argument('--epochs', type=int, default=200000)
     parser.add_argument('--steps_per_epoch', type=int, default=int(5e3))
     parser.add_argument('--save_freq', type=int, default=10)
     parser.add_argument('--is_restore_train', type=bool, default=False)
 
-    parser.add_argument('--is_test', type=bool, default=False)
+    parser.add_argument('--is_test', type=bool, default=True)
     parser.add_argument('--test_determin', type=bool, default=True)
     parser.add_argument('--test_render', type=bool, default=False)
 
@@ -602,7 +604,7 @@ if __name__ == '__main__':
     parser.add_argument('--target_entropy', type=float, default=0.4)
     parser.add_argument('--use_max', type=bool, default=False)
     parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--exp_name', type=str, default='lazy_random_incentiveTrue') #'lazy_random_incentive')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
+    parser.add_argument('--exp_name', type=str, default='lazy_random_incentive') #'lazy_random_incentive')# ')#'1_{}_seed{}-0-half-random_repeat2'.format(parser.parse_args().env,parser.parse_args().seed))
     args = parser.parse_args()
 
     from spinup.utils.run_utils import setup_logger_kwargs
