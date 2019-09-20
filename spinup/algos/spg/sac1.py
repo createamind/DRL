@@ -3,8 +3,8 @@ import tensorflow as tf
 from numbers import Number
 import gym
 import time
-from spinup.algos.spg import core
-from spinup.algos.spg.core import get_vars
+from spinup.algos.spg import core1 as core
+from spinup.algos.spg.core1 import get_vars
 from spinup.utils.logx import EpochLogger
 from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack

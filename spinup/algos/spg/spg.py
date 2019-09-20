@@ -217,10 +217,14 @@ def spg(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed
 
 
     # Soft actor-critic losses
-    pi_loss = tf.reduce_mean(alpha * logp_pi - q1_pi)
+    # pi_loss = tf.reduce_mean(alpha * logp_pi - q1_pi)
     q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
     q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
     value_loss = q1_loss + q2_loss
+
+    pg_backup = tf.stop_gradient(q1_pi - alpha * logp_pi)
+    pi_loss = -tf.reduce_mean(logp_pi * pg_backup)
+
 
     # Policy train op 
     # (has to be separate from value train op, because q1_pi appears in pi_loss)
@@ -380,7 +384,7 @@ def spg(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed
             epoch = t // steps_per_epoch
 
             if epoch < 1000:
-                test_agent(25)
+                test_agent(5)
                 # test_ep_ret = logger.get_stats('TestEpRet')[0]
                 # print('TestEpRet', test_ep_ret, 'Best:', test_ep_ret_best)
             else:
@@ -440,7 +444,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='BipedalWalker-v2_3e6_1')
+    parser.add_argument('--exp_name', type=str, default='spg')
     parser.add_argument('--stack_frames', type=int, default=4)
     args = parser.parse_args()
 
