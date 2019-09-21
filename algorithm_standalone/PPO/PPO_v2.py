@@ -20,9 +20,11 @@ import matplotlib.pyplot as plt
 import gym, threading, queue
 import time, os, sys
 
+
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
+
 
 EP_MAX = 3000
 EP_LEN = 200
@@ -41,6 +43,7 @@ EPSILON = 0.2  # for clipping surrogate objective
 GAME = 'Pendulum-v0'
 S_DIM, A_DIM = 3, 1  # state and action dimension
 
+ALPHA = 0.1
 
 class PPO(object):
     def __init__(self):
@@ -79,6 +82,11 @@ class PPO(object):
         #for _ in (tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)):
         #    print(_)
 
+        self.entropy = -ALPHA* oldpi.log_prob(self.sample_op)
+        self.logp_a = -ALPHA * oldpi.log_prob(self.tfa)
+
+        self.adv_logp = self.advantage + self.logp_a
+
         if not os.path.exists('save/'):
             os.makedirs('save/')
 
@@ -105,7 +113,8 @@ class PPO(object):
                 data = np.vstack(data)
                 s, a, r = data[:, :S_DIM], data[:, S_DIM: S_DIM + A_DIM], data[:, -1:]
 #                print("data.shape:",s.shape,a.shape,r.shape)
-                adv = self.sess.run(self.advantage, {self.tfs: s, self.tfdc_r: r})
+                # adv = self.sess.run(self.advantage, {self.tfs: s, self.tfdc_r: r})
+                adv = self.sess.run(self.adv_logp, {self.tfs: s, self.tfdc_r: r, self.tfa: a})
                 # update actor and critic in a update loop
 
                 #oldpi_pro = self.sess.run(self.oldpi.prob(self.tfa),{self.tfs:s, self.tfa:a})
@@ -142,6 +151,10 @@ class PPO(object):
         if s.ndim < 2: s = s[np.newaxis, :]
         return self.sess.run(self.v, {self.tfs: s})[0, 0]
 
+    def get_entropy(self, s):
+        if s.ndim < 2: s = s[np.newaxis, :]
+        return self.sess.run(self.entropy, {self.tfs: s})[0, 0]
+
 
 class Worker(object):
     def __init__(self, wid):
@@ -164,7 +177,10 @@ class Worker(object):
                 buffer_s.append(s)
                 buffer_a.append(a)
                 #buffer_r.append(r)
-                buffer_r.append((r + 8) / 3)  # normalize reward, find to be useful
+                r1 = (r + 8) / 3
+                r2 = self.ppo.get_entropy(s)
+                buffer_r.append(r1+r2)  # normalize reward, find to be useful
+                # print(r,r1,r2)
                 s = s_
                 ep_r += r
 
