@@ -137,9 +137,9 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             the current policy and value function.
 
     """
-
-    logger = EpochLogger(**logger_kwargs)
-    logger.save_config(locals())
+    if not args.is_test:
+        logger = EpochLogger(**logger_kwargs)
+        logger.save_config(locals())
 
     tf.set_random_seed(seed)
     np.random.seed(seed)
@@ -261,16 +261,16 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     if args.is_test:
         test_env = gym.make(args.env)
         ave_ep_ret = 0
-        for j in range(10):
+        for j in range(10000):
             o, r, d, ep_ret, ep_len = test_env.reset(), 0, False, 0, 0
             while not d: # (d or (ep_len == 2000)):
-                o, r, d, _ = test_env.step(get_action(o))
+                o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
                 ep_len += 1
                 if args.test_render:
                     test_env.render()
             ave_ep_ret = (j*ave_ep_ret + ep_ret)/(j+1)
-            print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret,'({}/10)'.format(j+1) )
+            print('ep_len', ep_len, 'ep_ret:', ep_ret, 'ave_ep_ret:',ave_ep_ret,'({}/10000)'.format(j+1) )
         return
 
 
@@ -399,7 +399,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--is_restore_train', type=bool, default=False)
 
-    parser.add_argument('--is_test', type=bool, default=False)
+    parser.add_argument('--is_test', type=bool, default=True)
     parser.add_argument('--test_render', type=bool, default=False)
 
     parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
@@ -415,7 +415,7 @@ if __name__ == '__main__':
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--act_noise', type=float, default=0.3)
     parser.add_argument('--obs_noise', type=float, default=0.0)
-    parser.add_argument('--exp_name', type=str, default='sac1_BipedalWalkerHardcore-v2_debug1')
+    parser.add_argument('--exp_name', type=str, default='A_sac1_BipedalWalkerHardcore-v2_stump622_2e6_alphaauto_2')
 
     args = parser.parse_args()
 
@@ -454,7 +454,7 @@ if __name__ == '__main__':
     # env = FrameStack(env, args.stack_frames)
 
     env3 = Wrapper(gym.make(args.env), 3)
-    env1 = Wrapper(gym.make(args.env), 1)
+    env1 = gym.make(args.env)
 
     sac1(args, lambda n: env3 if n == 3 else env1, actor_critic=core.mlp_actor_critic,
          ac_kwargs=dict(hidden_sizes=[400, 300]),

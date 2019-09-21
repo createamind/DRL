@@ -20,8 +20,11 @@ import matplotlib.pyplot as plt
 import gym, threading, queue
 import time, os, sys
 
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.Session(config=config)
 
-EP_MAX = 1000
+EP_MAX = 3000
 EP_LEN = 200
 
 N_WORKER = 4  # parallel workers
@@ -161,7 +164,7 @@ class Worker(object):
                 buffer_s.append(s)
                 buffer_a.append(a)
                 #buffer_r.append(r)
-                buffer_r.append((r + 8) / 8)  # normalize reward, find to be useful
+                buffer_r.append((r + 8) / 3)  # normalize reward, find to be useful
                 s = s_
                 ep_r += r
 
@@ -236,30 +239,30 @@ def main(args):
         #plt.ion()
         plt.show()
 
-        env = gym.make('Pendulum-v0')
-        while True:
-            s = env.reset()
-            s0 = env.env.state
-            s00 = s
-            totalreward = 0
-            for t in range(200):
-                #env.render()
-                s, r_test, _, _ = env.step(GLOBAL_PPO.choose_action(s))
-                totalreward += r_test
-            print("reward: ",totalreward)
-
-            if totalreward <= -550:
-                print("Bad Result Alert")
-                env.reset()
-                env.env.state = s0
-                print(env.env.state)
-                totalreward1 = 0
-                for t in range(200):
-                    env.render()
-                    s00,r_test1,_,_ = env.step(GLOBAL_PPO.choose_action(s00))
-                    totalreward1 += r_test1
-                print("reward: ", totalreward1)
-                print("===============================================")
+        # env = gym.make('Pendulum-v0')
+        # while True:
+        #     s = env.reset()
+        #     s0 = env.env.state
+        #     s00 = s
+        #     totalreward = 0
+        #     for t in range(200):
+        #         #env.render()
+        #         s, r_test, _, _ = env.step(GLOBAL_PPO.choose_action(s))
+        #         totalreward += r_test
+        #     print("reward: ",totalreward)
+        #
+        #     if totalreward <= -550:
+        #         print("Bad Result Alert")
+        #         env.reset()
+        #         env.env.state = s0
+        #         print(env.env.state)
+        #         totalreward1 = 0
+        #         for t in range(200):
+        #             env.render()
+        #             s00,r_test1,_,_ = env.step(GLOBAL_PPO.choose_action(s00))
+        #             totalreward1 += r_test1
+        #         print("reward: ", totalreward1)
+        #         print("===============================================")
 
     else:
         #Testing
@@ -294,7 +297,7 @@ if __name__ == '__main__':
 
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--Test', type=bool, default=True)
+    parser.add_argument('--Test', type=bool, default=False)
     args = parser.parse_args()
 
     main(args)
