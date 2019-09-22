@@ -43,7 +43,7 @@ EPSILON = 0.2  # for clipping surrogate objective
 GAME = 'Pendulum-v0'
 S_DIM, A_DIM = 3, 1  # state and action dimension
 
-ALPHA = 0.1
+ALPHA = 0.005*20
 
 class PPO(object):
     def __init__(self):
