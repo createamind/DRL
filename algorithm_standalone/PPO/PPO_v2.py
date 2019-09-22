@@ -20,11 +20,9 @@ import matplotlib.pyplot as plt
 import gym, threading, queue
 import time, os, sys
 
-
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
-
 
 EP_MAX = 3000
 EP_LEN = 200

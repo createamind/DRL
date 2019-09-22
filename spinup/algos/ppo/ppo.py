@@ -317,7 +317,7 @@ if __name__ == '__main__':
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='ppo_CartPole-v0')
+    parser.add_argument('--exp_name', type=str, default='ppo_pendulum_0')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
