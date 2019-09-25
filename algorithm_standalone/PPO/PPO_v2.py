@@ -20,11 +20,9 @@ import matplotlib.pyplot as plt
 import gym, threading, queue
 import time, os, sys
 
-
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 session = tf.Session(config=config)
-
 
 EP_MAX = 3000
 EP_LEN = 200
@@ -43,7 +41,7 @@ EPSILON = 0.2  # for clipping surrogate objective
 GAME = 'Pendulum-v0'
 S_DIM, A_DIM = 3, 1  # state and action dimension
 
-ALPHA = 0.1
+ALPHA = 0.005*20
 
 class PPO(object):
     def __init__(self):

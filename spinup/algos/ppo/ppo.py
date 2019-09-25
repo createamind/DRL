@@ -8,6 +8,10 @@ from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
 
 
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.Session(config=config)
+
 class PPOBuffer:
     """
     A buffer for storing trajectories experienced by a PPO agent interacting
@@ -91,7 +95,7 @@ with early stopping based on approximate KL
 """
 def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=1000,
+        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
 
@@ -263,6 +267,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             o, r, d, _ = env.step(a[0])
             ep_ret += r
             ep_len += 1
+            # d = False if ep_len == max_ep_len else d
 
             terminal = d or (ep_len == max_ep_len)
             if terminal or (t==local_steps_per_epoch-1):
@@ -303,7 +308,8 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='CartPole-v0') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='Pendulum-v0') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--max_ep_len', type=int, default=1000)
     parser.add_argument('--hid', type=int, default=64)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -311,7 +317,7 @@ if __name__ == '__main__':
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='ppo_CartPole-v0')
+    parser.add_argument('--exp_name', type=str, default='ppo_pendulum_0')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -320,6 +326,6 @@ if __name__ == '__main__':
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     ppo(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, 
+        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
