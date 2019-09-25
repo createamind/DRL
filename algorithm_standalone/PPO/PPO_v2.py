@@ -41,7 +41,7 @@ EPSILON = 0.2  # for clipping surrogate objective
 GAME = 'Pendulum-v0'
 S_DIM, A_DIM = 3, 1  # state and action dimension
 
-ALPHA = 0.005*20
+ALPHA = 0.005*20*3/8
 
 class PPO(object):
     def __init__(self):
@@ -175,7 +175,7 @@ class Worker(object):
                 buffer_s.append(s)
                 buffer_a.append(a)
                 #buffer_r.append(r)
-                r1 = (r + 8) / 3
+                r1 = (r + 8) / 8
                 r2 = self.ppo.get_entropy(s)
                 buffer_r.append(r1+r2)  # normalize reward, find to be useful
                 # print(r,r1,r2)
