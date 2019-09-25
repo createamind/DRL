@@ -90,7 +90,7 @@ Soft Actor-Critic
 
 def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
          steps_per_epoch=5000, epochs=100, replay_size=int(1e6), gamma=0.99,
-         polyak=0.995, lr=6e-4, alpha=0.2, batch_size=150, start_steps=10000,
+         polyak=0.995, lr=1e-4, alpha=0.2, batch_size=150, start_steps=10000,
          max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
 
@@ -196,8 +196,8 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # s_0 = np.zeros([batch_size, h_size])  # zero state for training  N H
 
     # Main outputs from computation graph
-    outputs, states = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
-    # outputs, states = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
+    # outputs, states = cudnn_rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
+    outputs, states = rnn_cell(x_ph, s_t_0, h_size=ac_kwargs["h_size"])
     # states = outputs[:, -1, :]
     # outputs = mlp(outputs, [ac_kwargs["h_size"], ac_kwargs["h_size"]], activation=tf.nn.elu)
 
@@ -244,7 +244,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi[:, :-1, :] + target_entropy))
         # Use smaller learning rate to make alpha decay slower
-        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=1e-4, name='alpha_optimizer')
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=1e-5, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 
     # model train op
@@ -496,16 +496,16 @@ if __name__ == '__main__':
     from gym_env import EnvWrapper
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
+    # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     # parser.add_argument('--env', type=str, default='Pendulum-v0')
     # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
-    # parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='Humanoid-v2')
     # parser.add_argument('--env', type=str, default="RoboschoolHalfCheetah-v1")
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')
     parser.add_argument('--flag', type=str, default='obs_act')
-    parser.add_argument('--hid1', type=int, default=256)
-    parser.add_argument('--hid2', type=int, default=256)
-    parser.add_argument('--state', type=int, default=64)
+    parser.add_argument('--hid1', type=int, default=400)
+    parser.add_argument('--hid2', type=int, default=300)
+    parser.add_argument('--state', type=int, default=256)
     parser.add_argument('--batch_size', type=int, default=150)
     parser.add_argument('--seq', type=int, default=17)
     parser.add_argument('--tm', type=int, default=1, help="number of training iteration for model, >= 1")
@@ -518,9 +518,9 @@ if __name__ == '__main__':
     # opt rnn on (model and Q ---> mq only on Q --->q only on model --->m)
     parser.add_argument('--opt', type=str, default="mq")
     parser.add_argument('--seed', '-s', type=int, default=0)
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=2000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'debug_beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
+    name = 'base_mujoco_beta_decay_{}_seq_{}_mlp_{}_{}_rnn_{}_obs_{}_h0_{}_alpha_{}_opt_{}_beta_{}_norm_{}_tm_{}_repeat_{}'.format(
         parser.parse_args().env,
         parser.parse_args().seq,
         parser.parse_args().hid1,

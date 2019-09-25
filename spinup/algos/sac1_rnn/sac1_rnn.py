@@ -10,9 +10,9 @@ from gym.spaces import Box, Discrete
 from spinup.utils.frame_stack import FrameStack
 from collections import deque
 
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-session = tf.Session(config=config)
+# config = tf.ConfigProto()
+# config.gpu_options.allow_growth = True
+# session = tf.Session(config=config)
 import os
 
 class ReplayBuffer:
@@ -96,7 +96,7 @@ Soft Actor-Critic
 
 def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=core.sac1_dynamic_rnn,
              ac_kwargs=dict(), seed=0, Lb=10, Lt=10, hc_dim=128, steps_per_epoch=3000, epochs=100,
-             replay_size=int(1e5), gamma=0.99, reward_scale=1.0, polyak=0.995, lr=5e-4, alpha=0.2,
+             replay_size=int(5e5), gamma=0.99, reward_scale=1.0, polyak=0.995, lr=5e-4, alpha=0.2,
              h0=1.0, batch_size=150, start_steps=10000, max_ep_len_train=1000, max_ep_len_test=1000,
              logger_kwargs=dict(), save_freq=1):
     """
@@ -354,6 +354,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
         act_op = mu if deterministic else pi
         action, hc_1 = sess.run([act_op, hc_geta], feed_dict={x_ph_geta: o.reshape(1, 1, obs_dim),
                                                               hc_ph_geta: hc_0})
+        # time.sleep(0.001)
         return action[0], hc_1
         ##############################  test  ############################
 
@@ -383,6 +384,7 @@ def sac1_rnn(args, env_fn, actor_critic=core.mlp_actor_critic, sac1_dynamic_rnn=
                 # Take deterministic actions at test time
                 a_test, hc_run_test = get_action(o, hc_run_test, True)
                 o, r, d, _ = test_env.step(a_test)
+                time.sleep(0.001)
                 ep_ret += r
                 ep_len += 1
                 # test_env.render()
@@ -555,19 +557,18 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
-
-    # parser.add_argument('--env', type=str, default='Humanoid-v2')
-    parser.add_argument('--env', type=str, default='Pendulum-v0')  # 'Pendulum-v0'
+    parser.add_argument('--env', type=str, default='Humanoid-v2')
+    # parser.add_argument('--env', type=str, default='Pendulum-v0')  # 'Pendulum-v0'
     parser.add_argument('--is_restore_train', type=bool, default=False)
     parser.add_argument('--is_test', type=bool, default=False)
     parser.add_argument('--test_render', type=bool, default=False)
     parser.add_argument('--max_ep_len_test', type=int, default=2000)  # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
     parser.add_argument('--max_ep_len_train', type=int,
                         default=400)  # max_ep_len_train < 2000//3 # 'BipedalWalkerHardcore-v2' max_ep_len is 2000
-    parser.add_argument('--h1', type=int, default=256)
-    parser.add_argument('--h2', type=int, default=256)
+    parser.add_argument('--h1', type=int, default=400)
+    parser.add_argument('--h2', type=int, default=300)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--lr', type=float, default=6e-4)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
     parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
@@ -576,15 +577,12 @@ if __name__ == '__main__':
     parser.add_argument('--act_noise', type=float, default=0.0)
     parser.add_argument('--obs_noise', type=float, default=0.0)
     # parser.add_argument('--exp_name', type=str, default='sac1_rnn_BipedalWalkerHardcore-v2_debug')
-    parser.add_argument('--act_repeate', type=int, default=1)
+    parser.add_argument('--act_repeat', type=int, default=1)
     parser.add_argument('--Lt', type=int, default=15)  # 'train'
     parser.add_argument('--Lb', type=int, default=10)  # 'burn-in'
-    parser.add_argument('--hc_dim', type=int, default=64)
-    # parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--hc_dim', type=int, default=256)
     parser.add_argument('--h0', type=float, default=0.1)  # for alpha learning rate decay
-    # parser.add_argument('--epochs', type=int, default=1000)
-    # parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    name = 'debug_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
+    name = 'mujoco_big_sac1_rnn_{}_Lt_{}_h0_{}_alpha_{}_seed_{}'.format(
         parser.parse_args().env,
         parser.parse_args().Lt,
         # parser.parse_args().hid1,
@@ -593,8 +591,8 @@ if __name__ == '__main__':
         # parser.parse_args().flag,
         parser.parse_args().h0,
         parser.parse_args().alpha,
-        parser.parse_args().seed)
-    # parser.parse_args().beta,
+        parser.parse_args().seed,
+        parser.parse_args().act_repeat)
     # parser.parse_args().tm,
     # parser.parse_args().repeat,
     # parser.parse_args().ps)
@@ -657,8 +655,8 @@ if __name__ == '__main__':
 
     # env = FrameStack(env, args.stack_frames)
 
-    env_train = Wrapper_train(gym.make(args.env), args.act_repeate)
-    env_test = Wrapper_test(gym.make(args.env), args.act_repeate)
+    env_train = Wrapper_train(gym.make(args.env), args.act_repeat)
+    env_test = Wrapper_test(gym.make(args.env), args.act_repeat)
 
     sac1_rnn(args,
              lambda x: env_train if x == 'train' else env_test,
