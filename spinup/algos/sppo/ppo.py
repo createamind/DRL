@@ -95,7 +95,7 @@ with early stopping based on approximate KL
 """
 def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
+        vf_lr=1e-4, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
 
@@ -289,7 +289,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 buf.finish_path(last_val)
                 if terminal:
                     # only save EpRet / EpLen if trajectory finished
-                    logger.store(EpRet=ep_ret, EpLen=ep_len)
+                    logger.store(EpRet=ep_ret/args.reward_scale, EpLen=ep_len)
                 o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
         # Save model
@@ -319,17 +319,18 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Pendulum-v0') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
-    parser.add_argument('--max_ep_len', type=int, default=1000)
-    parser.add_argument('--hid', type=int, default=64)
+    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--max_ep_len', type=int, default=500)
+    parser.add_argument('--hid', type=int, default=400)
     parser.add_argument('--l', type=int, default=2)
+    parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.8)
+    parser.add_argument('--alpha', type=float, default=0.0)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='sppo_pendulum_a_0.8')
+    parser.add_argument('--epochs', type=int, default=10000)
+    parser.add_argument('--exp_name', type=str, default='sppo_BipedalWalkerHardcore_wrapper0.0')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -337,7 +338,30 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sppo(args, lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+
+
+    class Wrapper(object):
+
+        def __init__(self, env, action_repeat=3):
+            self._env = env
+            self.action_repeat = action_repeat
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def step(self, action):
+            r = 0.0
+            for _ in range(self.action_repeat):
+                obs_, reward_, done_, info_ = self._env.step(action)
+                r += reward_
+                # r -= 0.001
+                if done_ and self.action_repeat!=1:
+                    return obs_, 0.0, done_, info_
+                if self.action_repeat==1:
+                    return obs_, r, done_, info_
+            return obs_, args.reward_scale*r, done_, info_
+
+    sppo(args, lambda : Wrapper(gym.make(args.env)), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
