@@ -208,12 +208,16 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # PPO objectives
     ratio = tf.exp(logp - logp_old_ph)          # pi(a|s) / pi_old(a|s)
 
+    # For PPO
     # min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv))
 
+    # SPPO NO.2: add entropy
     adv_logp = adv_ph - args.alpha * tf.stop_gradient(logp)
     min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
     pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+
+
 
     v_loss = tf.reduce_mean((ret_ph - v)**2)
 
@@ -273,7 +277,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             o, r, d, _ = env.step(a[0])
             ep_ret += r
 
-            # add entropy
+            # SPPO NO.1: add entropy
             r += - args.alpha * logp_t
 
 
@@ -325,12 +329,12 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.0)
+    parser.add_argument('--alpha', type=float, default=0.1)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--exp_name', type=str, default='sppo_BipedalWalkerHardcore_wrapper0.0')
+    parser.add_argument('--exp_name', type=str, default='sppo_BipedalWalkerHardcore0.1')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
