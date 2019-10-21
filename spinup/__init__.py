@@ -7,7 +7,7 @@ from spinup.algos.sqn.sqn import sqn
 from spinup.algos.sqn_rpf.sqn_rpf import sqn_rpf
 from spinup.algos.td3.td3 import td3
 from spinup.algos.trpo.trpo import trpo
-from spinup.algos.vpg.vpg import vpg
+# from spinup.algos.vpg.vpg import vpg
 
 # Loggers
 from spinup.utils.logx import Logger, EpochLogger

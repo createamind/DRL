@@ -308,16 +308,16 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Pendulum-v0') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='LunarLander-v2') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
     parser.add_argument('--max_ep_len', type=int, default=1000)
-    parser.add_argument('--hid', type=int, default=64)
+    parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='ppo_pendulum_0')
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -325,7 +325,26 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    ppo(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+    class Wrapper(object):
+
+        def __init__(self, env, action_repeat=1):
+            self._env = env
+            self.action_repeat = action_repeat
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def step(self, action):
+            r = 0.0
+            for _ in range(self.action_repeat):
+                obs_, reward_, done_, info_ = self._env.step(action)
+                reward_ = reward_ if reward_ > -99.0 else 0.0
+                r = r + reward_
+                if done_:
+                    return obs_, r, done_, info_
+            return obs_, r, done_, info_
+
+    ppo(lambda : Wrapper(gym.make(args.env),1), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)

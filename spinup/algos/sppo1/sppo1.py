@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import gym
 import time
-import spinup.algos.ppo.core as core
+import spinup.algos.sppo1.core as core
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
@@ -93,9 +93,9 @@ Proximal Policy Optimization (by clipping),
 with early stopping based on approximate KL
 
 """
-def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0, 
-        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
+def sppo1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
+        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, lr=1e-4,
+          train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
 
@@ -188,7 +188,7 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
     # Main outputs from computation graph
-    pi, logp, logp_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+    mu, pi, logp, logp_pi, v, h = actor_critic(args.alpha, x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
@@ -201,14 +201,27 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam)
 
     # Count variables
-    var_counts = tuple(core.count_vars(scope) for scope in ['pi', 'v'])
-    logger.log('\nNumber of parameters: \t pi: %d, \t v: %d\n'%var_counts)
+    var_counts = tuple(core.count_vars(scope) for scope in ['q'])
+    logger.log('\nNumber of parameters: \t q: %d, \n'%var_counts)
 
 
     # PPO objectives
     ratio = tf.exp(logp - logp_old_ph)          # pi(a|s) / pi_old(a|s)
-    min_adv = tf.where(adv_ph>0, (1+clip_ratio)*adv_ph, (1-clip_ratio)*adv_ph)
-    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv))
+
+    # For PPO
+    min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
+    pi_loss1 = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv))
+
+    # For Entropy
+    pi_loss2 = -h
+
+    pi_loss = pi_loss1 + pi_loss2
+
+    # # SPPO NO.2: add entropy
+    # adv_logp = adv_ph - args.alpha * logp
+    # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
+    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+
     v_loss = tf.reduce_mean((ret_ph - v)**2)
 
     # Info (useful to watch during learning)
@@ -218,8 +231,8 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=pi_lr).minimize(pi_loss)
-    train_v = MpiAdamOptimizer(learning_rate=vf_lr).minimize(v_loss)
+    train_q = MpiAdamOptimizer(learning_rate=lr).minimize((2) + v_loss/args.alpha)
+
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -236,14 +249,12 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
         # Training
         for i in range(train_pi_iters):
-            _, kl = sess.run([train_pi, approx_kl], feed_dict=inputs)
+            _, kl = sess.run([train_q, approx_kl], feed_dict=inputs)
             kl = mpi_avg(kl)
             if kl > 1.5 * target_kl:
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
-        for _ in range(train_v_iters):
-            sess.run(train_v, feed_dict=inputs)
 
         # Log changes from update
         pi_l_new, v_l_new, kl, cf = sess.run([pi_loss, v_loss, approx_kl, clipfrac], feed_dict=inputs)
@@ -266,6 +277,10 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
             o, r, d, _ = env.step(a[0])
             ep_ret += r
+
+            # SPPO NO.1: add entropy
+            r += - args.alpha * logp_t
+
             ep_len += 1
             # d = False if ep_len == max_ep_len else d
 
@@ -308,16 +323,17 @@ def ppo(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Pendulum-v0') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='LunarLander-v2') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
     parser.add_argument('--max_ep_len', type=int, default=1000)
-    parser.add_argument('--hid', type=int, default=64)
+    parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
+    parser.add_argument('--alpha', type=float, default=0.1)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='ppo_pendulum_0')
+    parser.add_argument('--exp_name', type=str, default='sppo1_LunarLander-v2')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -325,7 +341,26 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    ppo(lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
+    class Wrapper(object):
+
+        def __init__(self, env, action_repeat=1):
+            self._env = env
+            self.action_repeat = action_repeat
+
+        def __getattr__(self, name):
+            return getattr(self._env, name)
+
+        def step(self, action):
+            r = 0.0
+            for _ in range(self.action_repeat):
+                obs_, reward_, done_, info_ = self._env.step(action)
+                reward_ = reward_ if reward_ > -99.0 else 0.0
+                r = r + reward_
+                if done_:
+                    return obs_, r, done_, info_
+            return obs_, r, done_, info_
+
+    sppo1(args, lambda : Wrapper(gym.make(args.env),1), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
