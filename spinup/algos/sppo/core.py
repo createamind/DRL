@@ -64,9 +64,6 @@ def discount_cumsum(x, discount):
 Policies
 """
 
-LOG_STD_MAX = 2
-LOG_STD_MIN = -20
-
 def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, action_space):
     act_dim = action_space.n
     logits = mlp(x, list(hidden_sizes)+[act_dim], activation, None)
@@ -79,18 +76,8 @@ def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, ac
 
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
     act_dim = a.shape.as_list()[-1]
-
-    '''scheme 1'''
     mu = mlp(x, list(hidden_sizes)+[act_dim], activation, output_activation)
     log_std = tf.get_variable(name='log_std', initializer=-0.5*np.ones(act_dim, dtype=np.float32))
-
-    '''scheme 2'''
-    # net = mlp(x, list(hidden_sizes), activation, activation)
-    # mu = tf.layers.dense(net, act_dim, activation=output_activation)
-    # log_std = tf.layers.dense(net, act_dim, activation=tf.tanh)
-    # log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
-
-
     std = tf.exp(log_std)
     pi = mu + tf.random_normal(tf.shape(mu)) * std
     logp = gaussian_likelihood(a, mu, log_std)
