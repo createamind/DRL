@@ -85,6 +85,26 @@ def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, actio
     return pi, logp, logp_pi
 
 
+LOG_STD_MAX = 2
+LOG_STD_MIN = -20
+
+def mlp_gaussian_policy0(x, a, hidden_sizes, activation, output_activation, action_space):
+
+    act_dim = a.shape.as_list()[-1]
+    net = mlp(x, list(hidden_sizes), activation, activation)
+    mu = tf.layers.dense(net, act_dim, activation=output_activation)
+
+    log_std = tf.layers.dense(net, act_dim, activation=tf.tanh)
+    log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+    std = tf.exp(log_std)
+    pi = mu + tf.random_normal(tf.shape(mu)) * std
+    logp = gaussian_likelihood(a, mu, log_std)
+    logp_pi = gaussian_likelihood(pi, mu, log_std)
+    return pi, logp, logp_pi
+
+
+
 """
 Actor-Critics
 """

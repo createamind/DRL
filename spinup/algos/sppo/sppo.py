@@ -94,8 +94,8 @@ with early stopping based on approximate KL
 
 """
 def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
-        vf_lr=1e-3, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
+        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2,
+         train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
 
@@ -226,8 +226,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=pi_lr).minimize(pi_loss)
-    train_v = MpiAdamOptimizer(learning_rate=vf_lr).minimize(v_loss)
+    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(pi_loss)
+    train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -319,17 +319,19 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLander-v2') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='LunarLander-v2') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 # 'LunarLanderContinuous-v2'
     parser.add_argument('--max_ep_len', type=int, default=1000)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.1)
-    parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--alpha', type=float, default=0.05)
+    parser.add_argument('--pi_lr', type=float, default=3e-4)
+    parser.add_argument('--vf_lr', type=float, default=1e-3)
+    parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_alpha0.1')
+    parser.add_argument('--epochs', type=int, default=2000)
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_alpha0.05a')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
