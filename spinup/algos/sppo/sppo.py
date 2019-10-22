@@ -293,8 +293,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
         # Save model
-        if (epoch % save_freq == 0) or (epoch == epochs-1):
-            logger.save_state({'env': env}, None)
+        # if (epoch % save_freq == 0) or (epoch == epochs-1):
+        #     logger.save_state({'env': env}, None)
 
         # Perform PPO update!
         update()
