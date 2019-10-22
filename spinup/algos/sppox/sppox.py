@@ -64,7 +64,7 @@ class PPOBuffer:
         
         # the next two lines implement GAE-Lambda advantage calculation
         deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
+        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam) # + vals[:-1]  # Adv + V = Q
         
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
@@ -331,7 +331,7 @@ if __name__ == '__main__':
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=2000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_alpha0.05a')
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_0.05')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
