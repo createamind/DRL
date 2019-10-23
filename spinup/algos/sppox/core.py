@@ -71,7 +71,8 @@ def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, ac
     pi = tf.squeeze(tf.multinomial(logits,1), axis=1)
     logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * logp_all, axis=1)
     logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * logp_all, axis=1)
-    return pi, logp, logp_pi
+    hx = tf.reduce_sum(tf.exp(logp_all) * logp_all, axis=1)  # exact entropy
+    return pi, logp, logp_pi, hx
 
 
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
@@ -118,7 +119,7 @@ def mlp_actor_critic(x, a, hidden_sizes=(64,64), activation=tf.tanh,
         policy = mlp_categorical_policy
 
     with tf.variable_scope('pi'):
-        pi, logp, logp_pi = policy(x, a, hidden_sizes, activation, output_activation, action_space)
+        pi, logp, logp_pi, hx = policy(x, a, hidden_sizes, activation, output_activation, action_space)
     with tf.variable_scope('v'):
         v = tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
-    return pi, logp, logp_pi, v
+    return pi, logp, logp_pi, hx, v

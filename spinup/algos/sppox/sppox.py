@@ -188,13 +188,13 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
     # Main outputs from computation graph
-    pi, logp, logp_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+    pi, logp, logp_pi, h, v = actor_critic(x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
 
     # Every step, get: action, value, and logprob
-    get_action_ops = [pi, v, logp_pi]
+    get_action_ops = [pi, v, logp_pi, h]
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
@@ -266,10 +266,11 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
-            a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
+            a, v_t, logp_t, h_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
 
             # SPPO NO.1: add entropy
             rh = r - args.alpha * logp_t
+            # rh = r - args.alpha * h_t           # exact entropy
             # save and log
             buf.store(o, a, rh, v_t, logp_t)
             logger.store(VVals=v_t)
@@ -324,14 +325,14 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.05)
+    parser.add_argument('--alpha', type=float, default=0.1)
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=3)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=2000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_0.05zz')
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_apple_0.1_logp')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
