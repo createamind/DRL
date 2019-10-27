@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import gym
 import time
-import spinup.algos.sppo.core as core
+import spinup.algos.qop.core as core
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
@@ -64,7 +64,7 @@ class PPOBuffer:
         
         # the next two lines implement GAE-Lambda advantage calculation
         deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
+        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam) # + vals[:-1]  # Adv + V = Q
         
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
@@ -188,13 +188,13 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
     # Main outputs from computation graph
-    pi, logp, logp_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+    mu, pi, logp, logp_pi, v, q, h = actor_critic(args.alpha, x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
 
     # Every step, get: action, value, and logprob
-    get_action_ops = [pi, v, logp_pi]
+    get_action_ops = [pi, v, logp_pi, h]
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
@@ -217,7 +217,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
     pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
-    v_loss = tf.reduce_mean((ret_ph - v)**2)
+    v_loss = tf.reduce_mean((ret_ph - q)**2)#+(ret_ph - v)**2)/2.0
 
     # Info (useful to watch during learning)
     approx_kl = tf.reduce_mean(logp_old_ph - logp)      # a sample estimate for KL-divergence, easy to compute
@@ -226,8 +226,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(pi_loss)
-    train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
+    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(pi_loss+0.1*v_loss)
+    # train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -250,8 +250,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
-        for _ in range(train_v_iters):
-            sess.run(train_v, feed_dict=inputs)
+        # for _ in range(train_v_iters):
+        #     sess.run(train_v, feed_dict=inputs)
 
         # Log changes from update
         pi_l_new, v_l_new, kl, cf = sess.run([pi_loss, v_loss, approx_kl, clipfrac], feed_dict=inputs)
@@ -266,12 +266,13 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
-            a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
-
+            a, v_t, logp_t, h_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
+            q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
             # SPPO NO.1: add entropy
-            rh = r - args.alpha * logp_t
+            # rh = r - args.alpha * logp_t
+            rh = r - args.alpha * h_t           # exact entropy
             # save and log
-            buf.store(o, a, rh, v_t, logp_t)
+            buf.store(o, a, rh, q_t, logp_t)
             logger.store(VVals=v_t)
 
             o, r, d, _ = env.step(a[0])
@@ -292,7 +293,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                     logger.store(EpRet=ep_ret, EpLen=ep_len)
                 o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
-        # Save model
+        # # Save model
         # if (epoch % save_freq == 0) or (epoch == epochs-1):
         #     logger.save_state({'env': env}, None)
 
@@ -324,14 +325,14 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.05)
+    parser.add_argument('--alpha', type=float, default=0.2)
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
-    parser.add_argument('--seed', '-s', type=int, default=1)
-    parser.add_argument('--cpu', type=int, default=4)
+    parser.add_argument('--seed', '-s', type=int, default=3)
+    parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=20000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_alpha0.05a')
+    parser.add_argument('--epochs', type=int, default=30000)
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppox1_0.2_qloss_relu_q_t_cpu8')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
