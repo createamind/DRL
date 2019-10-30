@@ -94,7 +94,7 @@ with early stopping based on approximate KL
 
 """
 def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2,
+        steps_per_epoch=8000, epochs=50, gamma=0.99, clip_ratio=0.2,
          train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
@@ -188,13 +188,13 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
     # Main outputs from computation graph
-    pi, logp, logp_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+    pi, logp, logp_pi, h, v = actor_critic(x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
 
     # Every step, get: action, value, and logprob
-    get_action_ops = [pi, v, logp_pi]
+    get_action_ops = [pi, v, logp_pi, h]
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
@@ -212,10 +212,16 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv))
 
-    # SPPO NO.2: add entropy
-    adv_logp = adv_ph - args.alpha * tf.stop_gradient(logp)
-    min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
-    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+
+    # ### Scheme1: SPPO NO.2: add entropy
+    # adv_logp = adv_ph - args.alpha * tf.stop_gradient(logp)
+    # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
+    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+
+    ### Scheme2: SPPO NO.2: add entropy
+    min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
+    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + args.alpha*h)
+
 
     v_loss = tf.reduce_mean((ret_ph - v)**2)
 
@@ -266,10 +272,11 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
-            a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
+            a, v_t, logp_t, h_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
 
             # SPPO NO.1: add entropy
-            rh = r - args.alpha * logp_t
+            # rh = r - args.alpha * logp_t
+            rh = r + args.alpha * h_t
             # save and log
             buf.store(o, a, rh, v_t, logp_t)
             logger.store(VVals=v_t)
@@ -319,19 +326,19 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLander-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
+    parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
     parser.add_argument('--max_ep_len', type=int, default=1000)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.05)
+    parser.add_argument('--alpha', type=float, default=0.02)
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=1)
-    parser.add_argument('--cpu', type=int, default=4)
+    parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=20000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_sppo_alpha0.05a')
+    parser.add_argument('--exp_name', type=str, default='LunarLanderContinuous-v2_sppo_ht_hloss_alpha0.02c_cpu8_8000')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
