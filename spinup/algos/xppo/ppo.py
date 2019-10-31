@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import gym
 import time
-import spinup.algos.qop.core as core
+import spinup.algos.sppo.core as core
 from spinup.utils.logx import EpochLogger
 from spinup.utils.mpi_tf import MpiAdamOptimizer, sync_all_params
 from spinup.utils.mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
@@ -64,7 +64,7 @@ class PPOBuffer:
         
         # the next two lines implement GAE-Lambda advantage calculation
         deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam) # + vals[:-1]  # Adv + V = Q
+        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
         
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
@@ -94,8 +94,8 @@ with early stopping based on approximate KL
 
 """
 def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2,
-         train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
+        steps_per_epoch=4000, epochs=50, gamma=0.99, clip_ratio=0.2, pi_lr=3e-4,
+        vf_lr=1e-4, train_pi_iters=80, train_v_iters=80, lam=0.97, max_ep_len=200,
         target_kl=0.01, logger_kwargs=dict(), save_freq=10):
     """
 
@@ -188,13 +188,13 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
     # Main outputs from computation graph
-    mu, pi, logp, logp_pi, v, q, h = actor_critic(args.alpha, x_ph, a_ph, **ac_kwargs)
+    pi, logp, logp_pi, v = actor_critic(x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
 
     # Every step, get: action, value, and logprob
-    get_action_ops = [pi, v, logp_pi, h]
+    get_action_ops = [pi, v, logp_pi]
 
     # Experience buffer
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
@@ -212,19 +212,14 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv))
 
-
-    # ### Scheme1: SPPO NO.2: add entropy
-    # adv_logp = adv_ph - args.alpha * tf.stop_gradient(logp)
-    # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
-    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
-
-    ### Scheme2: SPPO NO.2: add entropy
-    min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
-    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + args.alpha*h)
+    # SPPO NO.2: add entropy
+    adv_logp = adv_ph - args.alpha * tf.stop_gradient(logp)
+    min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
+    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
 
 
-    v_loss = tf.reduce_mean((ret_ph - q)**2)#+(ret_ph - v)**2)/2.0
+    v_loss = tf.reduce_mean((ret_ph - v)**2)
 
     # Info (useful to watch during learning)
     approx_kl = tf.reduce_mean(logp_old_ph - logp)      # a sample estimate for KL-divergence, easy to compute
@@ -233,8 +228,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(pi_loss+0.1*v_loss)
-    # train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
+    train_pi = MpiAdamOptimizer(learning_rate=pi_lr).minimize(pi_loss)
+    train_v = MpiAdamOptimizer(learning_rate=vf_lr).minimize(v_loss)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -257,8 +252,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
-        # for _ in range(train_v_iters):
-        #     sess.run(train_v, feed_dict=inputs)
+        for _ in range(train_v_iters):
+            sess.run(train_v, feed_dict=inputs)
 
         # Log changes from update
         pi_l_new, v_l_new, kl, cf = sess.run([pi_loss, v_loss, approx_kl, clipfrac], feed_dict=inputs)
@@ -273,17 +268,18 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
-            a, v_t, logp_t, h_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
-            q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
-            # SPPO NO.1: add entropy
-            # rh = r - args.alpha * logp_t
-            rh = r + args.alpha * h_t           # exact entropy
+            a, v_t, logp_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
+
             # save and log
-            buf.store(o, a, rh, q_t, logp_t)
+            buf.store(o, a, r, v_t, logp_t)
             logger.store(VVals=v_t)
 
             o, r, d, _ = env.step(a[0])
             ep_ret += r
+
+            # SPPO NO.1: add entropy
+            r += - args.alpha * logp_t
+
 
             ep_len += 1
             # d = False if ep_len == max_ep_len else d
@@ -297,10 +293,10 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 buf.finish_path(last_val)
                 if terminal:
                     # only save EpRet / EpLen if trajectory finished
-                    logger.store(EpRet=ep_ret, EpLen=ep_len)
+                    logger.store(EpRet=ep_ret/args.reward_scale, EpLen=ep_len)
                 o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
-        # # Save model
+        # Save model
         # if (epoch % save_freq == 0) or (epoch == epochs-1):
         #     logger.save_state({'env': env}, None)
 
@@ -327,19 +323,18 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLander-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
-    parser.add_argument('--max_ep_len', type=int, default=1000)
-    parser.add_argument('--hid', type=int, default=300)
+    parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2') # CartPole-v0 Acrobot-v1 LunarLander-v2 Breakout-ram-v4 Atlantis-ram-v0
+    parser.add_argument('--max_ep_len', type=int, default=500)
+    parser.add_argument('--hid', type=int, default=400)
     parser.add_argument('--l', type=int, default=2)
+    parser.add_argument('--reward_scale', type=float, default=5.0)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.2)
-    parser.add_argument('--pi_lr', type=float, default=3e-4)
-    parser.add_argument('--vf_lr', type=float, default=1e-3)
-    parser.add_argument('--seed', '-s', type=int, default=3)
-    parser.add_argument('--cpu', type=int, default=8)
+    parser.add_argument('--alpha', type=float, default=0.1)
+    parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_qop_0.2_qloss_relu_q_t_cpu8')
+    parser.add_argument('--epochs', type=int, default=10000)
+    parser.add_argument('--exp_name', type=str, default='sppo_BipedalWalkerHardcore0.1')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -347,9 +342,11 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
+
+
     class Wrapper(object):
 
-        def __init__(self, env, action_repeat=1):
+        def __init__(self, env, action_repeat=3):
             self._env = env
             self.action_repeat = action_repeat
 
@@ -360,13 +357,15 @@ if __name__ == '__main__':
             r = 0.0
             for _ in range(self.action_repeat):
                 obs_, reward_, done_, info_ = self._env.step(action)
-                reward_ = reward_ if reward_ > -99.0 else 0.0
-                r = r + reward_
-                if done_:
+                r += reward_
+                # r -= 0.001
+                if done_ and self.action_repeat!=1:
+                    return obs_, 0.0, done_, info_
+                if self.action_repeat==1:
                     return obs_, r, done_, info_
-            return obs_, r, done_, info_
+            return obs_, args.reward_scale*r, done_, info_
 
-    sppo(args, lambda : Wrapper(gym.make(args.env),1), actor_critic=core.mlp_actor_critic,
+    sppo(args, lambda : Wrapper(gym.make(args.env)), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)

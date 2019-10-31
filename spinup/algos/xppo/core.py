@@ -64,29 +64,54 @@ def discount_cumsum(x, discount):
 Policies
 """
 
-def mlp_categorical_policy(alpha, x, a, hidden_sizes, activation, output_activation, action_space):
+LOG_STD_MAX = 2
+LOG_STD_MIN = -20
+
+def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, action_space):
     act_dim = action_space.n
-    v_x = mlp(x, list(hidden_sizes)+[act_dim], activation, None)
-    pi_log = tf.nn.log_softmax(v_x / alpha, axis=1)
-    mu = tf.argmax(pi_log, axis=1)
-    pi = tf.squeeze(tf.random.multinomial(pi_log, 1), axis=1)
-    logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * pi_log, axis=1)
-    logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * pi_log, axis=1)
-    hx = -tf.reduce_sum(tf.exp(pi_log)*pi_log, axis=1)                     # exact entropy
-    vx = tf.reduce_sum(tf.exp(pi_log) * v_x, axis=1)                   # value
-    q = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * v_x, axis=1)
-    return mu, pi, hx, vx, q, logp, logp_pi
+    logits = mlp(x, list(hidden_sizes)+[act_dim], activation, None)
+    logp_all = tf.nn.log_softmax(logits)
+    pi = tf.squeeze(tf.multinomial(logits,1), axis=1)
+    logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * logp_all, axis=1)
+    logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * logp_all, axis=1)
+    return pi, logp, logp_pi
+
+
+def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
+    act_dim = a.shape.as_list()[-1]
+
+    '''scheme 1'''
+    mu = mlp(x, list(hidden_sizes)+[act_dim], activation, output_activation)
+    log_std = tf.get_variable(name='log_std', initializer=-0.5*np.ones(act_dim, dtype=np.float32))
+
+    '''scheme 2'''
+    # net = mlp(x, list(hidden_sizes), activation, activation)
+    # mu = tf.layers.dense(net, act_dim, activation=output_activation)
+    # log_std = tf.layers.dense(net, act_dim, activation=tf.tanh)
+    # log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+
+    std = tf.exp(log_std)
+    pi = mu + tf.random_normal(tf.shape(mu)) * std
+    logp = gaussian_likelihood(a, mu, log_std)
+    logp_pi = gaussian_likelihood(pi, mu, log_std)
+    return pi, logp, logp_pi
 
 
 """
 Actor-Critics
 """
-def mlp_actor_critic(alpha, x, a, hidden_sizes=(64,64), activation=tf.nn.relu,
+def mlp_actor_critic(x, a, hidden_sizes=(64,64), activation=tf.tanh, 
                      output_activation=None, policy=None, action_space=None):
 
+    # default policy builder depends on action space
+    if policy is None and isinstance(action_space, Box):
+        policy = mlp_gaussian_policy
+    elif policy is None and isinstance(action_space, Discrete):
+        policy = mlp_categorical_policy
 
-    policy = mlp_categorical_policy
-
-    with tf.variable_scope('q'):
-        mu, pi, hx, vx, q, logp, logp_pi = policy(alpha, x, a, hidden_sizes, activation, output_activation, action_space)
-    return mu, pi, logp, logp_pi, vx, q, hx
+    with tf.variable_scope('pi'):
+        pi, logp, logp_pi = policy(x, a, hidden_sizes, activation, output_activation, action_space)
+    with tf.variable_scope('v'):
+        v = tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
+    return pi, logp, logp_pi, v
