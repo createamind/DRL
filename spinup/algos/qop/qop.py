@@ -224,7 +224,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
 
 
-    v_loss = tf.reduce_mean((ret_ph - q)**2)#+(ret_ph - v)**2)/2.0
+    v_loss = tf.reduce_mean((ret_ph - q)**2+(ret_ph - v)**2)/2.0
 
     # Info (useful to watch during learning)
     approx_kl = tf.reduce_mean(logp_old_ph - logp)      # a sample estimate for KL-divergence, easy to compute
@@ -279,7 +279,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             # rh = r - args.alpha * logp_t
             rh = r + args.alpha * h_t           # exact entropy
             # save and log
-            buf.store(o, a, rh, q_t, logp_t)
+            buf.store(o, a, rh, v_t, logp_t)
             logger.store(VVals=v_t)
 
             o, r, d, _ = env.step(a[0])
@@ -339,7 +339,7 @@ if __name__ == '__main__':
     parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_qop_0.2_qloss_relu_q_t_cpu8')
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_qop_0.2_vqloss_relu_v_t_cpu8')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
