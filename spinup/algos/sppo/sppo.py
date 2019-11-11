@@ -335,10 +335,10 @@ if __name__ == '__main__':
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=3)
-    parser.add_argument('--cpu', type=int, default=8)
-    parser.add_argument('--steps', type=int, default=4000)
+    parser.add_argument('--cpu', type=int, default=4)
+    parser.add_argument('--steps', type=int, default=8000)
     parser.add_argument('--epochs', type=int, default=20000)
-    parser.add_argument('--exp_name', type=str, default='LunarLanderContinuous-v2_sppo_ht_hloss_alpha0.01cc_cpu8_8000')
+    parser.add_argument('--exp_name', type=str, default='LunarLanderContinuous-v2_sppo_ht_hloss_alpha0.0z_cpu4_8000aa')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
