@@ -34,14 +34,14 @@ if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
 
 # Set this to the path of your Carla binary
 SERVER_BINARY = os.environ.get("CARLA_SERVER",
-                               os.path.expanduser("~/CARLA_0.7.0/CarlaUE4.sh"))
+                               os.path.expanduser("/data/carla8/CarlaUE4.sh"))
 
-assert os.path.exists(SERVER_BINARY)
+# assert os.path.exists(SERVER_BINARY)
 if "CARLA_PY_PATH" in os.environ:
     sys.path.append(os.path.expanduser(os.environ["CARLA_PY_PATH"]))
 else:
     # TODO(ekl) switch this to the binary path once the planner is in master
-    sys.path.append(os.path.expanduser("~/carla/PythonClient/"))
+    sys.path.append(os.path.expanduser("/data/carla8/PythonClient/"))
 
 try:
     from carla.client import CarlaClient

@@ -52,7 +52,8 @@ Policies
 
 def softmax_policy(alpha, v_x, act_dim):
 
-    pi_log = tf.nn.log_softmax(v_x/alpha, axis=1)
+    # pi_log = tf.nn.log_softmax(v_x/alpha, axis=1)
+    pi_log = tf.nn.log_softmax(v_x, axis=1)
     mu = tf.argmax(pi_log, axis=1)
 
     # tf.random.multinomial( logits, num_samples, seed=None, name=None, output_dtype=None )
@@ -79,7 +80,7 @@ def mlp_actor_critic(x, x2,  a, alpha, hidden_sizes=(400,300), activation=tf.nn.
         x = (x - 128.0) / 128.0          # x: shape(?,128)
 
     act_dim = action_space.n
-    a_one_hot = tf.one_hot(a, depth=act_dim)      # shape(?,4)
+    a_one_hot = tf.squeeze(tf.one_hot(a, depth=act_dim), axis=1)      # shape(?,4)
     #vfs
     vf_mlp = lambda x: mlp(x, list(hidden_sizes) + [act_dim], activation, None)     # return: shape(?,4)
 

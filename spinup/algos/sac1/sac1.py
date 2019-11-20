@@ -181,7 +181,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)
+    v_backup = tf.stop_gradient(min_q_pi - alpha * (logp_pi2 + 0*target_entropy))
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
@@ -335,23 +335,21 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             logger.log_tabular('Time', time.time()-start_time)
             logger.dump_tabular()
 
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
-    parser.add_argument('--env', type=str, default='Humanoid-v2')
-    # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
+    # parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--seed', '-s', type=int, default=2)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
     # parser.add_argument('--exp_name', type=str, default='sac1_Humanoid-v2_baseline')
-    name = 'sac1_baseline_{}_alpha_{}_seed_{}'.format(
-        parser.parse_args().env,
-        parser.parse_args().alpha,
-        parser.parse_args().seed)
+    name = f"paper_sac0_baseline_{parser.parse_args().env}_alpha_{parser.parse_args().alpha}"
     parser.add_argument('--exp_name', type=str, default=name)  
     args = parser.parse_args()
 
