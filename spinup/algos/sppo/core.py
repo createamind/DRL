@@ -74,8 +74,27 @@ def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, ac
     h = -tf.reduce_sum(tf.exp(logp_all) * logp_all, axis=1)  # exact entropy
     return pi, logp, logp_pi, h
 
-
+LOG_STD_DELTA = 1.0
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
+
+    act_dim = a.shape.as_list()[-1]
+    net = mlp(x, list(hidden_sizes), activation, activation)
+    mu = tf.layers.dense(net, act_dim, activation=output_activation)
+
+    log_std = tf.get_variable(name='log_std', initializer=-0.5 * np.ones(act_dim, dtype=np.float32))
+
+    log_std1 = tf.layers.dense(net, act_dim, activation=tf.tanh) * LOG_STD_DELTA
+    log_std += log_std1
+
+    std = tf.exp(log_std)
+    pi = mu + tf.random_normal(tf.shape(mu)) * std
+    logp = gaussian_likelihood(a, mu, log_std)
+    logp_pi = gaussian_likelihood(pi, mu, log_std)
+    h = tf.reduce_sum(tf.ones(shape=tf.shape(mu)) * (np.log(2 * np.pi * np.e) + 2 * log_std) / 2, axis=1)  # exact entropy
+    return pi, logp, logp_pi, h
+
+
+def mlp_gaussian_policy_dev(x, a, hidden_sizes, activation, output_activation, action_space):
     act_dim = a.shape.as_list()[-1]
     mu = mlp(x, list(hidden_sizes)+[act_dim], activation, output_activation)
     log_std = tf.get_variable(name='log_std', initializer=-0.5*np.ones(act_dim, dtype=np.float32))

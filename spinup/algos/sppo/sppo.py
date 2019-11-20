@@ -326,20 +326,21 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Hopper-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
+    # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
+    parser.add_argument('--env', type=str, default='Ant-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
     parser.add_argument('--max_ep_len', type=int, default=1000)
     parser.add_argument('--hid', type=int, default=64)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--alpha', type=float, default=0.02)
-    parser.add_argument('--pi_lr', type=float, default=1e-4)
-    parser.add_argument('--vf_lr', type=float, default=5e-4)
+    parser.add_argument('--pi_lr', type=float, default=3e-4)
+    parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=8000)
-    parser.add_argument('--epochs', type=int, default=20000)
+    parser.add_argument('--epochs', type=int, default=5000)
     # parser.add_argument('--exp_name', type=str, default='LunarLanderContinuous-v2_sppo_ht_hloss_alpha0.02c_cpu8_8000')
-    parser.add_argument('--exp_name', type=str, default='EXP7_mujoco_{}_alpha_{}_cpu8'.format(parser.parse_args().env, parser.parse_args().alpha)) 
+    parser.add_argument('--exp_name', type=str, default='paper_sppo_{}_alpha_{}_cpu8_sigmod_1'.format(parser.parse_args().env, parser.parse_args().alpha)) 
     args = parser.parse_args()
     mpi_fork(args.cpu)  # run parallel code with mpi
 
