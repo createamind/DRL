@@ -332,14 +332,14 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.2)
+    parser.add_argument('--alpha', type=float, default=0.1)
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=3)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=8000)
     parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_qop_0.2_vqloss_relu_v_t_cpu8')
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2_qop_0.1_vqloss_relu_v_t_cpu8')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
