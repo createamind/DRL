@@ -74,7 +74,7 @@ def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, ac
     h = -tf.reduce_sum(tf.exp(logp_all) * logp_all, axis=1)  # exact entropy
     return pi, logp, logp_pi, h
 
-LOG_STD_DELTA = 1.0
+LOG_STD_DELTA = 0.0
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
 
     act_dim = a.shape.as_list()[-1]
