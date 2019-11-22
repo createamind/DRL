@@ -58,7 +58,7 @@ Soft Actor-Critic
 def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=5000, epochs=100, replay_size=int(3e6), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=300, start_steps=10000,
-        max_ep_len=1000, logger_kwargs=dict(), save_freq=1, target=0.5):
+        max_ep_len=1000, logger_kwargs=dict(), save_freq=1, target=0.5, action_repeat=1):
     """
 
     Args:
@@ -66,7 +66,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             The environment must satisfy the OpenAI Gym API.
 
         actor_critic: A function which takes in placeholder symbols 
-            for state, ``x_ph``, and action, ``a_ph``, and returns the main 
+            for state, ``x_ph``, and action, ``a_ph``, and returns the main
             outputs from the agent's Tensorflow computation graph:
 
             ===========  ================  ======================================
@@ -145,7 +145,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
 
-    env, test_env = env_fn(3), env_fn(1)
+    env, test_env = env_fn(action_repeat), env_fn(1)
     obs_dim = env.observation_space.shape[0]
     obs_space = env.observation_space
     act_dim = env.action_space.n
@@ -158,9 +158,12 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # Inputs to computation graph
     x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
 
-
+    try:
+        alpha = float(alpha)
+    except:
+        # print("convert alpha fail, checkout is alphaset to  auto")
+        assert alpha == "auto"
     ######
-    if alpha == 'auto':
         # target_entropy = (-np.prod(env.action_space.n))
         # target_entropy = (np.prod(env.action_space.n))/4/10
         target_entropy = target
@@ -384,20 +387,24 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='BeamRider-ram-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='Pong-ram-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
     # parser.add_argument('--use_wrapper', type=bool, default=True)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=5000)
+    parser.add_argument('--action_repeat', type=int, default=1)
+    parser.add_argument('--norm', action='store_true')
     parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
-    parser.add_argument('--alpha', default="auto", help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--alpha', default="auto", type=str, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--target', type=float, default=0.5)
-    parser.add_argument('--exp_name', type=str, default=f'paper_exp_{parser.parse_args().env}_alpha_{parser.parse_args().alpha}_{parser.parse_args().target}')
+    parser.add_argument('--exp_name', type=str, default=f'debug_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
+                                                        f'_alpha_{parser.parse_args().alpha}_target_{parser.parse_args().target}'
+                                                        f'_norm_{parser.parse_args().norm}')
     args = parser.parse_args()
-
+    # print("88888888\n"*22, args.norm)
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
@@ -406,17 +413,18 @@ if __name__ == '__main__':
     # reward wrapper
     class Wrapper(object):
 
-        def __init__(self, env, action_repeat=3):
+        def __init__(self, env, action_repeat=3, norm=True):
             self._env = env
             self.action_repeat = action_repeat
             # self.action_space = Discrete(3)   # Discrete(3)
-
+            self.norm = norm
         def __getattr__(self, name):
             return getattr(self._env, name)
 
         def reset(self):
             obs = self._env.reset()
-            obs = self._env.step(1)[0]   # auto start
+            obs = self._env.step(1)[0].astype(float)        # auto start
+            obs = (obs-128)/128 if self.norm else obs
             return obs
 
         def step(self, action):
@@ -424,16 +432,20 @@ if __name__ == '__main__':
             r = 0.0
             for _ in range(self.action_repeat):
                 obs, reward, done, info = self._env.step(action)
+
+                obs = obs.astype(float)
+                obs = (obs-128)/128 if self.norm else obs
                 # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
-                # if info['ale.lives'] < 5:
-                #     done = True
-                # else:
-                #     done = False
+#                if info['ale.lives'] < 5:
+#                    done = True
+#                else:
+#                    done = False
 
                 r = r + reward
 
                 if done:
                     return obs, r, done, info
+#                 print(obs)
 
             return obs, r, done, info
 
@@ -450,12 +462,13 @@ if __name__ == '__main__':
     # if args.use_wrapper:
     #     env_breakout = BreakoutWrapper(env_breakout)
 
-    env_3 = Wrapper(gym.make(parser.parse_args().env), 3)
-    env_1 = Wrapper(gym.make(parser.parse_args().env), 1)
+    # env_train = Wrapper(gym.make(parser.parse_args().env), )
+    # env_test = Wrapper(gym.make(parser.parse_args().env), 1)
+    env_w = lambda n: Wrapper(gym.make(parser.parse_args().env), n, parser.parse_args().norm)
 
 
-    sqn(lambda n : env_3 if n==3 else env_1, actor_critic=core.mlp_actor_critic,
-        ac_kwargs=dict(hidden_sizes=[400, 300]), target=args.target,
+    sqn(env_w, actor_critic=core.mlp_actor_critic,
+        ac_kwargs=dict(hidden_sizes=[400, 300]), target=args.target, action_repeat=args.action_repeat,
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, alpha=args.alpha, lr=args.lr, max_ep_len = args.max_ep_len,
         logger_kwargs=logger_kwargs)
 
