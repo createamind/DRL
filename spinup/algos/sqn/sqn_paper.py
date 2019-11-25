@@ -153,6 +153,9 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
     # Share information about action space with policy architecture
+
+
+
     ac_kwargs['action_space'] = env.action_space
 
     # Inputs to computation graph

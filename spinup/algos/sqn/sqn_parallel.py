@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 import math
 from collections import deque
-from keras.applications.xception import Xception
+# from keras.applications.xception import Xception
 from keras.layers import Dense, GlobalAveragePooling2D,Conv2D, AveragePooling2D, Flatten, Activation
 from keras.optimizers import Adam
 from keras.models import Model, Sequential
@@ -77,17 +77,25 @@ class ModifiedTensorBoard(TensorBoard):
     # Custom method for saving own metrics
     # Creates writer, writes custom metrics and closes writer
     def update_stats(self, **stats):
-        self._write_logs(stats, self.step)
+
+        # self.writer.add_summary(stats, self.step)
+        for name in stats:
+             summary = tf.Summary(value=[
+                     tf.Summary.Value(tag=name, simple_value=stats[name]),])
+             self.writer.add_summary(summary, self.step)
+        # self._write_logs(stats, self.step)
 
 
 
 class DQNAgent:
-    def __init__(self):
+    def __init__(self, env):
+        self.env = env
+        self.observation_dim = env.observation_space.shape[0]
+        self.action_dim = self.env.action_space.n
+        self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
         self.model = self.create_model()
         self.target_model = self.create_model()
         self.target_model.set_weights(self.model.get_weights())
-
-        self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
 
         self.tensorboard = ModifiedTensorBoard(log_dir=f"logs/{MODEL_NAME}-{int(time.time())}")
         self.target_update_counter = 0
@@ -125,17 +133,17 @@ class DQNAgent:
         model.add(Dense(64, activation='relu'))
         model.add(Dense(10, activation=None))
 
-        return model.input, model.output
+        return model
 
     def create_model(self):
         # base_model = Xception(weights=None, include_top=False, input_shape=(IM_HEIGHT, IM_WIDTH,3))
-        base_model = self.model_mlp()
+        base_model = self.model_mlp(self.observation_dim)
 
         x = base_model.output
-        x = GlobalAveragePooling2D()(x)
+        # x = GlobalAveragePooling2D()(x)
 
-        predictions = Dense(3, activation="linear")(x)
-        model = Model(inputs=base_model.input, outputs=predictions)
+        predictions = Dense(self.action_dim, activation="linear")(x)    # predict the Q value for each action
+        model = Model(inputs=base_model.input, outputs=predictions)     # Q(a|s)
         model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=["accuracy"])
         return model
 
@@ -193,8 +201,8 @@ class DQNAgent:
         return self.model.predict(np.array(state).reshape(-1, *state.shape)/255)[0]
 
     def train_in_loop(self):
-        X = np.random.uniform(size=(1, IM_HEIGHT, IM_WIDTH, 3)).astype(np.float32)
-        y = np.random.uniform(size=(1, 3)).astype(np.float32)
+        X = np.random.uniform(size=(1, self.observation_dim)).astype(np.float32)
+        y = np.random.uniform(size=(1, self.action_dim)).astype(np.float32)
         with self.graph.as_default():
             self.model.fit(X, y, verbose=False, batch_size=1)
 
@@ -227,8 +235,8 @@ if __name__ == '__main__':
         os.makedirs('models')
 
     # Create agent and environment
-    agent = DQNAgent()
     env = gym.make('CartPole-v0')
+    agent = DQNAgent(env)
 
 
     # Start training thread and wait for training to be initialized
@@ -239,7 +247,7 @@ if __name__ == '__main__':
 
     # Initialize predictions - forst prediction takes longer as of initialization that has to be done
     # It's better to do a first prediction then before we start iterating over episode steps
-    agent.get_qs(np.ones((env.im_height, env.im_width, 3)))
+    agent.get_qs(np.ones(env.observation_space.shape[0]))
 
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
@@ -270,7 +278,7 @@ if __name__ == '__main__':
                     action = np.argmax(agent.get_qs(current_state))
                 else:
                     # Get random action
-                    action = np.random.randint(0, 3)
+                    action = np.random.randint(0, env.action_space.n)
                     # This takes no time, so we add a delay matching 60 FPS (prediction above takes longer)
                     time.sleep(1/FPS)
 
