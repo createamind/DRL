@@ -115,8 +115,13 @@ def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, actio
 
     log_std = tf.get_variable(name='log_std', initializer=-0.5 * np.ones(act_dim, dtype=np.float32))
 
-    log_std1 = tf.layers.dense(net, act_dim, activation=tf.tanh) * LOG_STD_DELTA
-    log_std += log_std1
+    # scheme1
+    # log_std1 = tf.layers.dense(net, act_dim, activation=tf.tanh) * LOG_STD_DELTA
+    # scheme2
+    log_std1 = tf.layers.dense(net, act_dim, activation=tf.tanh)
+    log_std1 = -LOG_STD_DELTA * 0.5*(1-log_std1)
+
+    log_std = log_std + log_std1
 
     std = tf.exp(log_std)
     pi = mu + tf.random_normal(tf.shape(mu)) * std

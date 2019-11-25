@@ -313,7 +313,7 @@ def sac1(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
             #     logger.save_state({'env': env}, None)
 
             # Test the performance of the deterministic version of the agent.
-            test_agent(25)
+            test_agent(1)
 
             # logger.store(): store the data; logger.log_tabular(): log the data; logger.dump_tabular(): write the data
             # Log info about epoch
@@ -339,14 +339,14 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='BipedalWalkerHardcore-v2')  # 'Pendulum-v0'
-    parser.add_argument('--env', type=str, default='Humanoid-v2')
+    parser.add_argument('--env', type=str, default='HalfCheetah-v2')
     # parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2')
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=10000)
-    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     # parser.add_argument('--exp_name', type=str, default='sac1_Humanoid-v2_baseline')
     name = 'sac1_baseline_{}_alpha_{}_seed_{}'.format(
         parser.parse_args().env,

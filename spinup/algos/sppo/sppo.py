@@ -326,7 +326,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='LunarLanderContinuous-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
+    parser.add_argument('--env', type=str, default='HalfCheetah-v2') # CartPole-v0 Acrobot-v1 Breakout-ram-v4 # 'LunarLanderContinuous-v2' 0.02 #  LunarLander-v2 0.05
     parser.add_argument('--max_ep_len', type=int, default=1000)
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
@@ -334,11 +334,11 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', type=float, default=0.01)
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
-    parser.add_argument('--seed', '-s', type=int, default=5)
+    parser.add_argument('--seed', '-s', type=int, default=3)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=6000)
     parser.add_argument('--epochs', type=int, default=20000)
-    parser.add_argument('--exp_name', type=str, default='LunarLanderContinuous-v2_sppo_ht_hloss_alpha0.01_cpu4_6000cc_simga1')
+    parser.add_argument('--exp_name', type=str, default='HC2_cpu4_6000_alpha0.01_simgaNew1.0')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -365,7 +365,9 @@ if __name__ == '__main__':
                     return obs_, r, done_, info_
             return obs_, r, done_, info_
 
-    sppo(args, lambda : Wrapper(gym.make(args.env),1), actor_critic=core.mlp_actor_critic,
+    # Wrapper(gym.make(args.env),1)
+
+    sppo(args, lambda : gym.make(args.env), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
         seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
         logger_kwargs=logger_kwargs)
