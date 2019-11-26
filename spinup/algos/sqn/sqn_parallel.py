@@ -32,16 +32,16 @@ MINIBATCH_SIZE = 64
 PREDICTION_BATCH_SIZE = 1
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_EVERY = 5
-MODEL_NAME = "Xception"
+MODEL_NAME = "EXP3_Pong"
 
 MEMORY_FRACTION = 0.4
 MIN_REWARD = -200
 
-EPISODES = 100
+EPISODES = int(1e5)
 
 DISCOUNT = 0.99
 epsilon = 1
-EPSILON_DECAY = 0.95 ## 0.9975 99975
+EPSILON_DECAY = 0.9975 ## 0.9975 99975
 MIN_EPSILON = 0.001
 
 AGGREGATE_STATS_EVERY = 10
@@ -84,7 +84,45 @@ class ModifiedTensorBoard(TensorBoard):
                      tf.Summary.Value(tag=name, simple_value=stats[name]),])
              self.writer.add_summary(summary, self.step)
         # self._write_logs(stats, self.step)
+        self.writer.close()
 
+    # reward wrapper
+class Wrapper(object):
+
+    def __init__(self, env, action_repeat=3, norm=True):
+        self._env = env
+        self.action_repeat = action_repeat
+        self.norm = norm
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def reset(self):
+        _ = self._env.reset()
+        obs = self._env.step(1)[0].astype(float)        # auto start
+        obs = (obs-128)/128 if self.norm else obs
+        return obs
+
+    def step(self, action):
+        # action +=  args.act_noise * (-2 * np.random.random(4) + 1)
+        r = 0.0
+        for _ in range(self.action_repeat):
+            obs, reward, done, info = self._env.step(action)
+
+            obs = obs.astype(float)
+            obs = (obs-128)/128 if self.norm else obs
+            # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
+#                if info['ale.lives'] < 5:
+#                    done = True
+#                else:
+#                    done = False
+
+            r = r + reward
+
+            if done:
+                return obs, r, done, info
+#                 print(obs)
+        return obs, r, done, info
 
 
 class DQNAgent:
@@ -129,9 +167,9 @@ class DQNAgent:
         # Dense(64) is a fully-connected layer with 64 hidden units.
         # in the first layer, you must specify the expected input data shape:
         # here, 20-dimensional vectors.
-        model.add(Dense(64, activation='relu', input_dim=input_shape))
-        model.add(Dense(64, activation='relu'))
-        model.add(Dense(10, activation=None))
+        model.add(Dense(400, activation='relu', input_dim=input_shape))
+        model.add(Dense(300, activation='relu'))
+        # model.add(Dense(10, activation=None))
 
         return model
 
@@ -157,11 +195,11 @@ class DQNAgent:
 
         minibatch = random.sample(self.replay_memory, MINIBATCH_SIZE)
 
-        current_states = np.array([transition[0] for transition in minibatch])/255
+        current_states = np.array([transition[0] for transition in minibatch])
         with self.graph.as_default():
             current_qs_list = self.model.predict(current_states, PREDICTION_BATCH_SIZE)
 
-        new_current_states = np.array([transition[3] for transition in minibatch])/255
+        new_current_states = np.array([transition[3] for transition in minibatch])
         with self.graph.as_default():
             future_qs_list = self.target_model.predict(new_current_states, PREDICTION_BATCH_SIZE)
 
@@ -187,7 +225,7 @@ class DQNAgent:
             self.last_log_episode = self.tensorboard.step
 
         with self.graph.as_default():
-            self.model.fit(np.array(X)/255, np.array(y), batch_size=TRAINING_BATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if log_this_step else None)
+            self.model.fit(np.array(X), np.array(y), batch_size=TRAINING_BATCH_SIZE, verbose=0, shuffle=False, callbacks=[self.tensorboard] if log_this_step else None)
 
 
         if log_this_step:
@@ -198,7 +236,7 @@ class DQNAgent:
             self.target_update_counter = 0
 
     def get_qs(self, state):
-        return self.model.predict(np.array(state).reshape(-1, *state.shape)/255)[0]
+        return self.model.predict(np.array(state).reshape(-1, *state.shape))[0]
 
     def train_in_loop(self):
         X = np.random.uniform(size=(1, self.observation_dim)).astype(np.float32)
@@ -212,14 +250,14 @@ class DQNAgent:
             if self.terminate:
                 return
             self.train()
-            time.sleep(0.01)
-
+            # time.sleep(0.01)
 
 
 if __name__ == '__main__':
     FPS = 120
     # For stats
     ep_rewards = []
+    ep_fps = []
 
     # For more repetitive results
     random.seed(1)
@@ -235,9 +273,11 @@ if __name__ == '__main__':
         os.makedirs('models')
 
     # Create agent and environment
-    env = gym.make('CartPole-v0')
+    # env = gym.make('CartPole-v0')
+    # env = gym.make('Pong-ram-v0')
+    env = gym.make('Pong-ram-v0')
+    env = Wrapper(env, action_repeat=2, norm=True)
     agent = DQNAgent(env)
-
 
     # Start training thread and wait for training to be initialized
     trainer_thread = Thread(target=agent.train_in_loop, daemon=True)
@@ -252,67 +292,75 @@ if __name__ == '__main__':
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
         #try:
+        episode_start_time = time.time()
+        env.collision_hist = []
 
-            env.collision_hist = []
+        # Update tensorboard step every episode
+        agent.tensorboard.step = episode
 
-            # Update tensorboard step every episode
-            agent.tensorboard.step = episode
+        # Restarting episode - reset episode reward and step number
+        episode_reward = 0
+        step = 1
 
-            # Restarting episode - reset episode reward and step number
-            episode_reward = 0
-            step = 1
+        # Reset environment and get initial state
+        current_state = env.reset()
 
-            # Reset environment and get initial state
-            current_state = env.reset()
+        # Reset flag and start iterating until episode ends
+        done = False
+        episode_start = time.time()
 
-            # Reset flag and start iterating until episode ends
-            done = False
-            episode_start = time.time()
+        # Play for given number of seconds only
 
-            # Play for given number of seconds only
-            while True:
+        while True:
 
-                # This part stays mostly the same, the change is to query a model for Q values
-                if np.random.random() > epsilon:
-                    # Get action from Q table
-                    action = np.argmax(agent.get_qs(current_state))
-                else:
-                    # Get random action
-                    action = np.random.randint(0, env.action_space.n)
-                    # This takes no time, so we add a delay matching 60 FPS (prediction above takes longer)
-                    time.sleep(1/FPS)
+            # This part stays mostly the same, the change is to query a model for Q values
+            if np.random.random() > epsilon:
+                # Get action from Q table
+                action = np.argmax(agent.get_qs(current_state))
+            else:
+                # Get random action
+                action = np.random.randint(0, env.action_space.n)
+                # This takes no time, so we add a delay matching 60 FPS (prediction above takes longer)
+                time.sleep(1/FPS)
 
-                new_state, reward, done, _ = env.step(action)
+            new_state, reward, done, _ = env.step(action)
 
-                # Transform new continous state to new discrete state and count reward
-                episode_reward += reward
+            # Transform new continous state to new discrete state and count reward
+            episode_reward += reward
 
-                # Every step we update replay memory
-                agent.update_replay_memory((current_state, action, reward, new_state, done))
+            # Every step we update replay memory
+            agent.update_replay_memory((current_state, action, reward, new_state, done))
 
-                current_state = new_state
-                step += 1
+            current_state = new_state
+            step += 1
 
-                if done:
-                    break
+            if done:
+                episode_time = time.time() - episode_start_time
+                break
+                # episode_end_time = time.time()
 
-            # End of episode - destroy agents
-            ep_rewards.append(episode_reward)
-            if not episode % AGGREGATE_STATS_EVERY or episode == 1:
-                average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
-                min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
-                max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
-                agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
+        # End of episode - destroy agents
+        ep_rewards.append(episode_reward)
+        ep_fps.append(step/episode_time)
+        if not episode % AGGREGATE_STATS_EVERY or episode == 1:
+            average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
+            fps = sum(ep_fps[-AGGREGATE_STATS_EVERY:])/len(ep_fps[-AGGREGATE_STATS_EVERY:])
+            min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
+            max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
+            agent.tensorboard.update_stats(reward_avg=average_reward,
+                                           reward_min=min_reward,
+                                           reward_max=max_reward,
+                                           epsilon=epsilon,
+                                           fps=fps)
 
-                # Save model, but only when min reward is greater or equal a set value
-                if min_reward >= MIN_REWARD:
-                    agent.model.save(f'models/{MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model')
+            # Save model, but only when min reward is greater or equal a set value
+            if min_reward >= MIN_REWARD:
+                agent.model.save(f'models/{MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model')
 
-            # Decay epsilon
-            if epsilon > MIN_EPSILON:
-                epsilon *= EPSILON_DECAY
-                epsilon = max(MIN_EPSILON, epsilon)
-
+        # Decay epsilon
+        if epsilon > MIN_EPSILON:
+            epsilon *= EPSILON_DECAY
+            epsilon = max(MIN_EPSILON, epsilon)
 
     # Set termination flag for training thread and wait for it to finish
     agent.terminate = True
