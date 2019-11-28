@@ -8,7 +8,7 @@ import cv2
 import math
 from collections import deque
 # from keras.applications.xception import Xception
-from keras.layers import Dense, GlobalAveragePooling2D,Conv2D, AveragePooling2D, Flatten, Activation
+from keras.layers import Dense, GlobalAveragePooling2D,Conv2D, AveragePooling2D, Flatten, Activation, MaxPooling2D
 from keras.optimizers import Adam
 from keras.models import Model, Sequential
 from keras.callbacks import TensorBoard
@@ -146,21 +146,22 @@ class DQNAgent:
     def model_cnn(self, input_shape):
         model = Sequential()
 
-        model.add(Conv2D(64, (3, 3), input_shape=input_shape, padding='same'))
+        model.add(Conv2D(32, (3, 3), input_shape=input_shape, padding='same'))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
 
         model.add(Conv2D(64, (3, 3), padding='same'))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
 
-        model.add(Conv2D(64, (3, 3), padding='same'))
+        model.add(Conv2D(128, (3, 3), padding='same'))
         model.add(Activation('relu'))
-        model.add(AveragePooling2D(pool_size=(5, 5), strides=(3, 3), padding='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
 
         model.add(Flatten())
 
-        return model.input, model.output
+        # return model.input, model.output
+        return model
 
     def model_mlp(self, input_shape):
         model = Sequential()
