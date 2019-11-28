@@ -32,10 +32,10 @@ MINIBATCH_SIZE = 64
 PREDICTION_BATCH_SIZE = 1
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_EVERY = 5
-MODEL_NAME = "EXP3_Pong"
+MODEL_NAME = "EXP12_Pong"
 
 MEMORY_FRACTION = 0.4
-MIN_REWARD = -200
+MIN_REWARD = 0
 
 EPISODES = int(1e5)
 
@@ -44,7 +44,7 @@ epsilon = 1
 EPSILON_DECAY = 0.9975 ## 0.9975 99975
 MIN_EPSILON = 0.001
 
-AGGREGATE_STATS_EVERY = 10
+AGGREGATE_STATS_EVERY = 1
 
 
 # Own Tensorboard class
@@ -84,7 +84,8 @@ class ModifiedTensorBoard(TensorBoard):
                      tf.Summary.Value(tag=name, simple_value=stats[name]),])
              self.writer.add_summary(summary, self.step)
         # self._write_logs(stats, self.step)
-        self.writer.close()
+        # self.step += step
+        # self.writer.close()
 
     # reward wrapper
 class Wrapper(object):
@@ -93,24 +94,41 @@ class Wrapper(object):
         self._env = env
         self.action_repeat = action_repeat
         self.norm = norm
+        # self.observation_space =
 
     def __getattr__(self, name):
         return getattr(self._env, name)
 
+    def preprocess(self, img):
+        # Crop the image.
+        img = img[35:195]
+        # Downsample by factor of 2.
+        img = img[::2, ::2, 0]
+        # Erase background (background type 1).
+        img[img == 144] = 0
+        # Erase background (background type 2).
+        img[img == 109] = 0
+        # Set everything else (paddles, ball) to 1.
+        img[img != 0] = 1
+        return img.astype(np.float)
+
     def reset(self):
         _ = self._env.reset()
-        obs = self._env.step(1)[0].astype(float)        # auto start
-        obs = (obs-128)/128 if self.norm else obs
+        obs = self._env.step(1)[0]   # .astype(float)        # auto start
+        obs = self.preprocess(obs) if self.norm else obs
+        obs = np.stack([obs, obs, obs], axis=2)
+        assert obs.shape == (80, 80, 3), f"env reset obs {obs.shape}"
         return obs
+        # return obs
 
     def step(self, action):
         # action +=  args.act_noise * (-2 * np.random.random(4) + 1)
         r = 0.0
+        obs_c = []
         for _ in range(self.action_repeat):
             obs, reward, done, info = self._env.step(action)
-
-            obs = obs.astype(float)
-            obs = (obs-128)/128 if self.norm else obs
+            # obs = obs.astype(float)
+            obs = self.preprocess(obs) if self.norm else obs
             # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
 #                if info['ale.lives'] < 5:
 #                    done = True
@@ -118,17 +136,20 @@ class Wrapper(object):
 #                    done = False
 
             r = r + reward
-
+            obs_c.append(obs)
             if done:
-                return obs, r, done, info
+                return np.stack([obs_c[0],obs_c[0],obs_c[0]], axis=2), r, done, info
 #                 print(obs)
+        obs = np.stack(obs_c, axis=2)
+        assert obs.shape == (80, 80, 3), f"env step obs {obs.shape}"
         return obs, r, done, info
 
 
 class DQNAgent:
     def __init__(self, env):
         self.env = env
-        self.observation_dim = env.observation_space.shape[0]
+        self.observation_dim = (80, 80, 3)
+        # self.observation_dim = env.observation_space.shape[0]
         self.action_dim = self.env.action_space.n
         self.replay_memory = deque(maxlen=REPLAY_MEMORY_SIZE)
         self.model = self.create_model()
@@ -146,17 +167,17 @@ class DQNAgent:
     def model_cnn(self, input_shape):
         model = Sequential()
 
-        model.add(Conv2D(32, (3, 3), input_shape=input_shape, padding='same'))
+        model.add(Conv2D(32, (3, 3), strides=(2, 2),input_shape=input_shape))
         model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
-        model.add(Conv2D(64, (3, 3), padding='same'))
+        model.add(Conv2D(64, (3, 3), strides=(2, 2)))
         model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
-        model.add(Conv2D(128, (3, 3), padding='same'))
+        model.add(Conv2D(128, (3, 3), strides=(2, 2)))
         model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
+        # model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same'))
 
         model.add(Flatten())
 
@@ -176,7 +197,8 @@ class DQNAgent:
 
     def create_model(self):
         # base_model = Xception(weights=None, include_top=False, input_shape=(IM_HEIGHT, IM_WIDTH,3))
-        base_model = self.model_mlp(self.observation_dim)
+        # base_model = self.model_mlp(self.observation_dim)
+        base_model = self.model_cnn(self.observation_dim)
 
         x = base_model.output
         # x = GlobalAveragePooling2D()(x)
@@ -240,7 +262,7 @@ class DQNAgent:
         return self.model.predict(np.array(state).reshape(-1, *state.shape))[0]
 
     def train_in_loop(self):
-        X = np.random.uniform(size=(1, self.observation_dim)).astype(np.float32)
+        X = np.random.uniform(size=(1, 80, 80, 3)).astype(np.float32)
         y = np.random.uniform(size=(1, self.action_dim)).astype(np.float32)
         with self.graph.as_default():
             self.model.fit(X, y, verbose=False, batch_size=1)
@@ -276,8 +298,8 @@ if __name__ == '__main__':
     # Create agent and environment
     # env = gym.make('CartPole-v0')
     # env = gym.make('Pong-ram-v0')
-    env = gym.make('Pong-ram-v0')
-    env = Wrapper(env, action_repeat=2, norm=True)
+    env = gym.make('Pong-v0')
+    env = Wrapper(env, action_repeat=3, norm=True)
     agent = DQNAgent(env)
 
     # Start training thread and wait for training to be initialized
@@ -288,7 +310,7 @@ if __name__ == '__main__':
 
     # Initialize predictions - forst prediction takes longer as of initialization that has to be done
     # It's better to do a first prediction then before we start iterating over episode steps
-    agent.get_qs(np.ones(env.observation_space.shape[0]))
+    agent.get_qs(np.ones((80, 80, 3)))
 
     # Iterate over episodes
     for episode in tqdm(range(1, EPISODES + 1), ascii=True, unit='episodes'):
@@ -343,20 +365,21 @@ if __name__ == '__main__':
         # End of episode - destroy agents
         ep_rewards.append(episode_reward)
         ep_fps.append(step/episode_time)
-        if not episode % AGGREGATE_STATS_EVERY or episode == 1:
-            average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
-            fps = sum(ep_fps[-AGGREGATE_STATS_EVERY:])/len(ep_fps[-AGGREGATE_STATS_EVERY:])
-            min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
-            max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
-            agent.tensorboard.update_stats(reward_avg=average_reward,
-                                           reward_min=min_reward,
-                                           reward_max=max_reward,
-                                           epsilon=epsilon,
-                                           fps=fps)
+        # if not episode % AGGREGATE_STATS_EVERY or episode == 1:
+        average_reward = sum(ep_rewards[-AGGREGATE_STATS_EVERY:])/len(ep_rewards[-AGGREGATE_STATS_EVERY:])
+        fps = sum(ep_fps[-AGGREGATE_STATS_EVERY:])/len(ep_fps[-AGGREGATE_STATS_EVERY:])
+        min_reward = min(ep_rewards[-AGGREGATE_STATS_EVERY:])
+        max_reward = max(ep_rewards[-AGGREGATE_STATS_EVERY:])
+        agent.tensorboard.update_stats(step=step,
+                                       reward_avg=average_reward,
+                                       reward_min=min_reward,
+                                       reward_max=max_reward,
+                                       epsilon=epsilon,
+                                       fps=fps)
 
-            # Save model, but only when min reward is greater or equal a set value
-            if min_reward >= MIN_REWARD:
-                agent.model.save(f'models/{MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model')
+        # Save model, but only when min reward is greater or equal a set value
+        if min_reward >= MIN_REWARD:
+            agent.model.save(f'models/{MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model')
 
         # Decay epsilon
         if epsilon > MIN_EPSILON:
