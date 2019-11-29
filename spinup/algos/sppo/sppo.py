@@ -234,6 +234,11 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
+    # ### Scheme3: SPPO NO.3: add entropy
+    # adv_logp = adv_ph - tf.stop_gradient(alpha) * logp_old_ph
+    # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
+    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+
     ### Scheme2: SPPO NO.2: add entropy
     min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
     pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
