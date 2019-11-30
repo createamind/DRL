@@ -279,7 +279,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
             a, v_t, logp_t, h_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
-            q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
+            # q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
             # SPPO NO.1: add entropy
             # rh = r - args.alpha * logp_t
             rh = r + args.alpha * h_t           # exact entropy
@@ -337,14 +337,14 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.1)
+    parser.add_argument('--alpha', type=float, default=0.2)
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=3)
-    parser.add_argument('--cpu', type=int, default=4)
-    parser.add_argument('--steps', type=int, default=6000)
+    parser.add_argument('--cpu', type=int, default=8)
+    parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='LL2_qop_cpu4_6000_0.1vloss_relu_v_t_scheme2')
+    parser.add_argument('--exp_name', type=str, default='LL2_qop_cpu8_4000_0.2vloss_relu_v_t_scheme2')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
