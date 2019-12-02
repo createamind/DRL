@@ -256,7 +256,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
     # Info (useful to watch during learning)
     approx_kl = tf.reduce_mean(logp_old_ph - logp)      # a sample estimate for KL-divergence, easy to compute
-    approx_ent = tf.reduce_mean(-logp)                  # a sample estimate for entropy, also easy to compute
+    approx_ent = tf.reduce_mean(h)                  # a sample estimate for entropy, also easy to compute
     clipped = tf.logical_or(ratio > (1+clip_ratio), ratio < (1-clip_ratio))
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
@@ -371,7 +371,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
-    parser.add_argument('--seed', '-s', type=int, default=3)
+    parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=30000)
