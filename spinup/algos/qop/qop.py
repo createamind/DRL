@@ -187,8 +187,20 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     x_ph, a_ph = core.placeholders_from_spaces(env.observation_space, env.action_space)
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
+
+    ###########
+    if args.alpha == 'auto':
+        target_entropy = 0.35
+
+        log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=tf.log(0.2))
+        alpha = tf.exp(log_alpha)
+    else:
+        alpha = args.alpha
+    ###########
+
+
     # Main outputs from computation graph
-    mu, pi, logp, logp_pi, v, q, h = actor_critic(args.alpha, x_ph, a_ph, **ac_kwargs)
+    mu, pi, logp, logp_pi, v, q, h = actor_critic(alpha, x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
@@ -205,6 +217,17 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     logger.log('\nNumber of parameters: \t pi: %d, \t v: %d\n'%var_counts)
 
 
+    ######
+
+    if args.alpha == 'auto':
+        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(-h + target_entropy))  # tf.clip_by_value(-h + target_entropy, 0.0, 1000.0 )
+
+        alpha_optimizer = MpiAdamOptimizer(learning_rate=1e-5)
+        train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
+
+    ######
+
+
     # PPO objectives
     ratio = tf.exp(logp - logp_old_ph)          # pi(a|s) / pi_old(a|s)
 
@@ -214,18 +237,18 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
 
     # ### Scheme1: SPPO NO.2: add entropy
-    # adv_logp = adv_ph - args.alpha * tf.stop_gradient(logp)
+    # adv_logp = adv_ph - tf.stop_gradient(alpha) * tf.stop_gradient(logp)
     # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
     # ### Scheme3: SPPO NO.3: add entropy
-    # adv_logp = adv_ph - args.alpha * logp_old_ph
+    # adv_logp = adv_ph - tf.stop_gradient(alpha) * logp_old_ph
     # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
     ### Scheme2: SPPO NO.2: add entropy
     min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
-    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + args.alpha*h)
+    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
 
 
 
@@ -256,6 +279,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
         # Training
         for i in range(train_pi_iters):
+            if args.alpha == 'auto':
+                sess.run(train_alpha_op, feed_dict=inputs)
             _, kl = sess.run([train_pi, approx_kl], feed_dict=inputs)
             kl = mpi_avg(kl)
             if kl > 1.5 * target_kl:
@@ -270,7 +295,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         logger.store(LossPi=pi_l_old, LossV=v_l_old, 
                      KL=kl, Entropy=ent, ClipFrac=cf,
                      DeltaLossPi=(pi_l_new - pi_l_old),
-                     DeltaLossV=(v_l_new - v_l_old))
+                     DeltaLossV=(v_l_new - v_l_old),
+                     Alpha=sess.run(alpha) if args.alpha == 'auto' else alpha)
 
     start_time = time.time()
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -282,7 +308,11 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             # q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
             # SPPO NO.1: add entropy
             # rh = r - args.alpha * logp_t
-            rh = r + args.alpha * h_t           # exact entropy
+            if args.alpha == 'auto':
+                rh = r + sess.run(alpha) * h_t
+            else:
+                rh = r + alpha * h_t           # exact entropy
+
             # save and log
             buf.store(o, a, rh, v_t, logp_t)
             logger.store(VVals=v_t)
@@ -322,6 +352,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         logger.log_tabular('LossV', average_only=True)
         logger.log_tabular('DeltaLossPi', average_only=True)
         logger.log_tabular('DeltaLossV', average_only=True)
+        logger.log_tabular('Alpha', average_only=True)
         logger.log_tabular('Entropy', average_only=True)
         logger.log_tabular('KL', average_only=True)
         logger.log_tabular('ClipFrac', average_only=True)
@@ -337,14 +368,14 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', type=float, default=0.2)
+    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=3)
     parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=4000)
     parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='LL2_qop_cpu8_4000_0.2vloss_relu_v_t_scheme2')
+    parser.add_argument('--exp_name', type=str, default='LL2_qop_cpu8_4000_auto0.35_vloss_relu_v_t_scheme2')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
