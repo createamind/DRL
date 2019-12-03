@@ -32,7 +32,7 @@ MINIBATCH_SIZE = 64
 PREDICTION_BATCH_SIZE = 1
 TRAINING_BATCH_SIZE = MINIBATCH_SIZE // 4
 UPDATE_TARGET_EVERY = 5
-MODEL_NAME = "EXP12_Pong"
+MODEL_NAME = "EXP12_Pong_d_ep"
 
 MEMORY_FRACTION = 0.4
 MIN_REWARD = 0
@@ -41,7 +41,8 @@ EPISODES = int(1e5)
 
 DISCOUNT = 0.99
 epsilon = 1
-EPSILON_DECAY = 0.9975 ## 0.9975 99975
+# EPSILON_DECAY = 0.9975 ## 0.9975 99975
+EPSILON_DECAY = 0.99 ## 0.9975 99975
 MIN_EPSILON = 0.001
 
 AGGREGATE_STATS_EVERY = 1
@@ -298,7 +299,7 @@ if __name__ == '__main__':
     # Create agent and environment
     # env = gym.make('CartPole-v0')
     # env = gym.make('Pong-ram-v0')
-    env = gym.make('Pong-v0')
+    env = gym.make('PongDeterministic-v4')
     env = Wrapper(env, action_repeat=3, norm=True)
     agent = DQNAgent(env)
 

@@ -390,8 +390,9 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='Pong-ram-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
+    # parser.add_argument('--env', type=str, default='Pong-ram-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
     # parser.add_argument('--use_wrapper', type=bool, default=True)
+    parser.add_argument('--env', type=str, default='Pong-ramNoFrameskip-v4')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -401,9 +402,9 @@ if __name__ == '__main__':
     parser.add_argument('--norm', action='store_true')
     parser.add_argument('--max_ep_len', type=int, default=4000)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default="auto", type=str, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--target', type=float, default=0.5)
-    parser.add_argument('--exp_name', type=str, default=f'debug_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
+    parser.add_argument('--exp_name', type=str, default=f'debug_sqn_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
                                                         f'_alpha_{parser.parse_args().alpha}_target_{parser.parse_args().target}'
                                                         f'_norm_{parser.parse_args().norm}')
     args = parser.parse_args()
@@ -428,6 +429,7 @@ if __name__ == '__main__':
             obs = self._env.reset()
             obs = self._env.step(1)[0].astype(float)        # auto start
             obs = (obs-128)/128 if self.norm else obs
+            # print(obs)
             return obs
 
         def step(self, action):
@@ -449,7 +451,7 @@ if __name__ == '__main__':
                 if done:
                     return obs, r, done, info
 #                 print(obs)
-
+            # print(obs)
             return obs, r, done, info
 
         # def step(self, action):
