@@ -145,7 +145,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
 
-    env, test_env = env_fn(action_repeat), env_fn(1)
+    env, test_env = env_fn(action_repeat), env_fn(action_repeat)
     obs_dim = env.observation_space.shape[0]
     obs_space = env.observation_space
     act_dim = env.action_space.n
@@ -202,7 +202,7 @@ def sqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     if isinstance(alpha,tf.Tensor):
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi_ + target_entropy))
 
-        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=lr, name='alpha_optimizer')
+        alpha_optimizer = tf.train.AdamOptimizer(learning_rate=0.1*lr, name='alpha_optimizer')
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
 ######
 
@@ -404,7 +404,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', default="auto", type=str, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--target', type=float, default=0.5)
-    parser.add_argument('--exp_name', type=str, default=f'debug_sqn_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
+    parser.add_argument('--exp_name', type=str, default=f'debug0.1_sqn_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
                                                         f'_alpha_{parser.parse_args().alpha}_target_{parser.parse_args().target}'
                                                         f'_norm_{parser.parse_args().norm}')
     args = parser.parse_args()

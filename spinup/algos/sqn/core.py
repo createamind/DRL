@@ -47,6 +47,7 @@ def softmax_policy(alpha, v_x, act_dim):
 
     pi_log = tf.nn.log_softmax(v_x/alpha, axis=1)
     mu = tf.argmax(pi_log, axis=1)
+    # mu = tf.argmax(v_x, axis=1)
 
     # tf.random.multinomial( logits, num_samples, seed=None, name=None, output_dtype=None )
     # logits: 2-D Tensor with shape [batch_size, num_classes]. Each slice [i, :] represents the unnormalized log-probabilities for all classes.
