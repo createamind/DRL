@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # parser.add_argument('--env', type=str, default='Pong-ram-v0')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
     # parser.add_argument('--use_wrapper', type=bool, default=True)
-    parser.add_argument('--env', type=str, default='Pong-ramNoFrameskip-v4')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
+    parser.add_argument('--env', type=str, default='Breakout-ramNoFrameskip-v4')  # CartPole-v0(o4a2, alpha2, gamma0.8), LunarLander-v2(o8a4, alpha:0.05-0.2), Acrobot-v1, Breakout-ram-v4(alpha0.8, gamma0.99)), MountainCar-v0 Atlantis-ram-v0
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
@@ -404,7 +404,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', default="auto", type=str, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--target', type=float, default=0.5)
-    parser.add_argument('--exp_name', type=str, default=f'debug0.1_sqn_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
+    parser.add_argument('--exp_name', type=str, default=f'EXP3_sqn_repeat_{parser.parse_args().action_repeat}_env_{parser.parse_args().env}'
                                                         f'_alpha_{parser.parse_args().alpha}_target_{parser.parse_args().target}'
                                                         f'_norm_{parser.parse_args().norm}')
     args = parser.parse_args()
@@ -434,17 +434,17 @@ if __name__ == '__main__':
 
         def step(self, action):
             # action +=  args.act_noise * (-2 * np.random.random(4) + 1)
-            r = 0.0
+            r = 0.1
             for _ in range(self.action_repeat):
                 obs, reward, done, info = self._env.step(action)
 
                 obs = obs.astype(float)
                 obs = (obs-128)/128 if self.norm else obs
                 # obs, reward, done, info = self._env.step(action+1)  # Discrete(3)
-#                if info['ale.lives'] < 5:
-#                    done = True
-#                else:
-#                    done = False
+                if info['ale.lives'] < 5:
+                    done = True
+                else:
+                    done = False
 
                 r = r + reward
 
