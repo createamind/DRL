@@ -316,8 +316,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='LunarLander-v2')
+    parser.add_argument('--epochs', type=int, default=10000)
+    parser.add_argument('--exp_name', type=str, default='LunarLander-v2-x')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi

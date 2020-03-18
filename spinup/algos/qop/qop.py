@@ -23,14 +23,16 @@ class PPOBuffer:
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.adv_buf = np.zeros(size, dtype=np.float32)
+        self.q_backup_buf = np.zeros(size, dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
         self.val_buf = np.zeros(size, dtype=np.float32)
+        self.q_buf = np.zeros(size, dtype=np.float32)
         self.logp_buf = np.zeros(size, dtype=np.float32)
         self.gamma, self.lam = gamma, lam
         self.ptr, self.path_start_idx, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, val, logp):
+    def store(self, obs, act, rew, val, q_val, logp):
         """
         Append one timestep of agent-environment interaction to the buffer.
         """
@@ -39,6 +41,7 @@ class PPOBuffer:
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.val_buf[self.ptr] = val
+        self.q_buf[self.ptr] = q_val
         self.logp_buf[self.ptr] = logp
         self.ptr += 1
 
@@ -61,11 +64,15 @@ class PPOBuffer:
         path_slice = slice(self.path_start_idx, self.ptr)
         rews = np.append(self.rew_buf[path_slice], last_val)
         vals = np.append(self.val_buf[path_slice], last_val)
+        q_vals = np.append(self.q_buf[path_slice], last_val)
         
         # the next two lines implement GAE-Lambda advantage calculation
-        deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam) # + vals[:-1]  # Adv + V = Q
-        
+        # deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]    # GAE
+        # deltas = rews[:-1] + self.gamma * vals[1:] - q_vals[:-1]  # GQE
+        deltas = rews[:-1] + self.gamma * q_vals[1:] - q_vals[:-1]  # GQE1
+        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
+        self.q_backup_buf[path_slice] = self.adv_buf[path_slice]+ q_vals[:-1]  # + vals[:-1]  # Adv + V = Q
+
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
         
@@ -82,7 +89,7 @@ class PPOBuffer:
         # the next two lines implement the advantage normalization trick
         # adv_mean, adv_std = mpi_statistics_scalar(self.adv_buf)
         # self.adv_buf = (self.adv_buf - adv_mean) / adv_std
-        return [self.obs_buf, self.act_buf, self.adv_buf, 
+        return [self.obs_buf, self.act_buf, self.adv_buf, self.q_backup_buf,
                 self.ret_buf, self.logp_buf]
 
 
@@ -185,7 +192,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
     # Inputs to computation graph
     x_ph, a_ph = core.placeholders_from_spaces(env.observation_space, env.action_space)
-    adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
+    adv_ph, q_backup_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None, None)
 
 
     ###########
@@ -203,7 +210,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     mu, pi, logp, logp_pi, v, q, h = actor_critic(alpha, x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
-    all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
+    all_phs = [x_ph, a_ph, adv_ph, q_backup_ph, ret_ph, logp_old_ph]
 
     # Every step, get: action, value, and logprob
     get_action_ops = [pi, v, logp_pi, h]
@@ -252,7 +259,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
 
 
-    v_loss = tf.reduce_mean((ret_ph - v)**2)#+(ret_ph - q)**2)/2.0
+    v_loss = tf.reduce_mean((q_backup_ph - q)**2)#+(adv_ph - v)**2)/2.0
 
     # Info (useful to watch during learning)
     approx_kl = tf.reduce_mean(logp_old_ph - logp)      # a sample estimate for KL-divergence, easy to compute
@@ -261,8 +268,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(pi_loss+0.1*v_loss)
-    # train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
+    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(1.0*pi_loss+0.0*v_loss)
+    train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
 
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -287,8 +294,8 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
-        # for _ in range(train_v_iters):
-        #     sess.run(train_v, feed_dict=inputs)
+        for _ in range(train_v_iters):
+            sess.run(train_v, feed_dict=inputs)
 
         # Log changes from update
         pi_l_new, v_l_new, kl, cf = sess.run([pi_loss, v_loss, approx_kl, clipfrac], feed_dict=inputs)
@@ -305,7 +312,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
             a, v_t, logp_t, h_t = sess.run(get_action_ops, feed_dict={x_ph: o.reshape(1,-1)})
-            # q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
+            q_t = sess.run(q, feed_dict={x_ph: o.reshape(1,-1), a_ph: a})
             # SPPO NO.1: add entropy
             # rh = r - args.alpha * logp_t
             if args.alpha == 'auto':
@@ -314,7 +321,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
                 rh = r + alpha * h_t           # exact entropy
 
             # save and log
-            buf.store(o, a, rh, v_t, logp_t)
+            buf.store(o, a, rh, v_t, q_t, logp_t)
             logger.store(VVals=v_t)
 
             o, r, d, _ = env.step(a[0])
@@ -368,14 +375,16 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--pi_lr', type=float, default=3e-4)
+    parser.add_argument('--lam', type=float, default=0.97)
+    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--pi_lr', type=float, default=1e-3)#3e-4)#
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=1)
-    parser.add_argument('--cpu', type=int, default=8)
+    parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=4000)
+    parser.add_argument('--bs', type=int, default=512)
     parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='LL2_qop_cpu8_4000_auto0.35_vloss_relu_v_t_scheme2')
+    parser.add_argument('--exp_name', type=str, default='qop-qloss-cpu4-y')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
@@ -404,5 +413,5 @@ if __name__ == '__main__':
 
     sppo(args, lambda : Wrapper(gym.make(args.env),1), actor_critic=core.mlp_actor_critic,
         ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), gamma=args.gamma, max_ep_len=args.max_ep_len,
-        seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
+        seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs, lam = args.lam,
         logger_kwargs=logger_kwargs)
