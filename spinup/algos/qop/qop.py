@@ -67,11 +67,11 @@ class PPOBuffer:
         q_vals = np.append(self.q_buf[path_slice], last_val)
         
         # the next two lines implement GAE-Lambda advantage calculation
-        # deltas = rews[:-1] + self.gamma * vals[1:] - vals[:-1]    # GAE
+        deltas_gae = rews[:-1] + self.gamma * vals[1:] - vals[:-1]    # GAE
         # deltas = rews[:-1] + self.gamma * vals[1:] - q_vals[:-1]  # GQE
-        deltas = rews[:-1] + self.gamma * q_vals[1:] - q_vals[:-1]  # GQE1
-        self.adv_buf[path_slice] = core.discount_cumsum(deltas, self.gamma * self.lam)
-        self.q_backup_buf[path_slice] = self.adv_buf[path_slice]+ q_vals[:-1]  # + vals[:-1]  # Adv + V = Q
+        deltas_gqe = rews[:-1] + self.gamma * q_vals[1:] - q_vals[:-1]  # GQE1
+        self.adv_buf[path_slice] = core.discount_cumsum(deltas_gae, self.gamma * self.lam)
+        self.q_backup_buf[path_slice] = core.discount_cumsum(deltas_gqe, self.gamma * self.lam)+ q_vals[:-1]  # + vals[:-1]  # Adv + V = Q
 
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
@@ -258,7 +258,6 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
 
 
-
     v_loss = tf.reduce_mean((q_backup_ph - q)**2)#+(adv_ph - v)**2)/2.0
 
     # Info (useful to watch during learning)
@@ -268,7 +267,7 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
 
     # Optimizers
-    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(1.0*pi_loss+0.0*v_loss)
+    train_pi = MpiAdamOptimizer(learning_rate=args.pi_lr).minimize(1.0*pi_loss)
     train_v = MpiAdamOptimizer(learning_rate=args.vf_lr).minimize(v_loss)
 
     sess = tf.Session()
@@ -285,15 +284,16 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         pi_l_old, v_l_old, ent = sess.run([pi_loss, v_loss, approx_ent], feed_dict=inputs)
 
         # Training
-        for i in range(train_pi_iters):
-            if args.alpha == 'auto':
-                sess.run(train_alpha_op, feed_dict=inputs)
-            _, kl = sess.run([train_pi, approx_kl], feed_dict=inputs)
-            kl = mpi_avg(kl)
-            if kl > 1.5 * target_kl:
-                logger.log('Early stopping at step %d due to reaching max kl.'%i)
-                break
-        logger.store(StopIter=i)
+        # for i in range(train_pi_iters):
+        #     if args.alpha == 'auto':
+        #         sess.run(train_alpha_op, feed_dict=inputs)
+        #     _, kl = sess.run([train_pi, approx_kl], feed_dict=inputs)
+        #     kl = mpi_avg(kl)
+        #     if kl > 1.5 * target_kl:
+        #         logger.log('Early stopping at step %d due to reaching max kl.'%i)
+        #         break
+        # logger.store(StopIter=i)
+        logger.store(StopIter=1)
         for _ in range(train_v_iters):
             sess.run(train_v, feed_dict=inputs)
 
@@ -377,14 +377,14 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lam', type=float, default=0.97)
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
-    parser.add_argument('--pi_lr', type=float, default=1e-3)#3e-4)#
+    parser.add_argument('--pi_lr', type=float, default=3e-4)#1e-3)#
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=1)
-    parser.add_argument('--cpu', type=int, default=4)
-    parser.add_argument('--steps', type=int, default=4000)
+    parser.add_argument('--cpu', type=int, default=8)
+    parser.add_argument('--steps', type=int, default=8000)
     parser.add_argument('--bs', type=int, default=512)
     parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='qop-qloss-cpu4-y')
+    parser.add_argument('--exp_name', type=str, default='qop-qloss-cpu4-alpha0.01')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
