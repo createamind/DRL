@@ -375,7 +375,7 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--lam', type=float, default=0.97)
+    parser.add_argument('--lam', type=float, default=0.8)
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--pi_lr', type=float, default=3e-4)#1e-3)#
     parser.add_argument('--vf_lr', type=float, default=1e-3)

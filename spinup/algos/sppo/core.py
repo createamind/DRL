@@ -31,6 +31,12 @@ def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
         x = tf.layers.dense(x, units=h, activation=activation)
     return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
 
+def mlp0(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
+    for h in hidden_sizes[:-1]:
+        x = tf.layers.dense(x, units=h, activation=None)
+        x = tf.nn.leaky_relu(x, alpha=0.1)
+    return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
+
 def get_vars(scope=''):
     return [x for x in tf.trainable_variables() if scope in x.name]
 
