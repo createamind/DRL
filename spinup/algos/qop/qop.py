@@ -71,7 +71,8 @@ class PPOBuffer:
         # deltas = rews[:-1] + self.gamma * vals[1:] - q_vals[:-1]  # GQE
         deltas_gqe = rews[:-1] + self.gamma * q_vals[1:] - q_vals[:-1]  # GQE1
         self.adv_buf[path_slice] = core.discount_cumsum(deltas_gae, self.gamma * self.lam)
-        self.q_backup_buf[path_slice] = core.discount_cumsum(deltas_gqe, self.gamma * self.lam)+ q_vals[:-1]  # + vals[:-1]  # Adv + V = Q
+        # self.q_backup_buf[path_slice] = core.discount_cumsum(deltas_gqe, self.gamma * self.lam)+ q_vals[:-1]  # + vals[:-1]  # Adv + V = Q
+        self.q_backup_buf[path_slice] = core.discount_cumsum(deltas_gae, self.gamma * self.lam) + vals[:-1]  # Adv + V = Q
 
         # the next line computes rewards-to-go, to be targets for the value function
         self.ret_buf[path_slice] = core.discount_cumsum(rews, self.gamma)[:-1]
@@ -316,9 +317,9 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             # SPPO NO.1: add entropy
             # rh = r - args.alpha * logp_t
             if args.alpha == 'auto':
-                rh = r + sess.run(alpha) * h_t
+                rh = r + sess.run(alpha) * gamma * h_t
             else:
-                rh = r + alpha * h_t           # exact entropy
+                rh = r + alpha * gamma * h_t           # exact entropy
 
             # save and log
             buf.store(o, a, rh, v_t, q_t, logp_t)
@@ -379,12 +380,12 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--pi_lr', type=float, default=3e-4)#1e-3)#
     parser.add_argument('--vf_lr', type=float, default=1e-3)
-    parser.add_argument('--seed', '-s', type=int, default=1)
+    parser.add_argument('--seed', '-s', type=int, default=11)
     parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=8000)
     parser.add_argument('--bs', type=int, default=512)
-    parser.add_argument('--epochs', type=int, default=30000)
-    parser.add_argument('--exp_name', type=str, default='qop-qloss-cpu4-alpha0.01')
+    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--exp_name', type=str, default='qop-qloss-cpu4-alpha0.01-a')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi

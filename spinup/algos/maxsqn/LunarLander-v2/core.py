@@ -73,64 +73,53 @@ def mlp_actor_critic(x, x2,  a, alpha, hidden_sizes=(400,300), activation=tf.nn.
 
     act_dim = action_space.n
     a_one_hot = tf.one_hot(a[...,0], depth=act_dim)      # shape(?,4)
-
     #vfs
     vf_mlp = lambda x: mlp(x, list(hidden_sizes) + [act_dim], activation, None)     # return: shape(?,4)
 
 
+    ################# Q1
 
-    with tf.variable_scope('q1'):
-        q1 = tf.reduce_sum(vf_mlp(x)*a_one_hot, axis=1)
+    q1_tp = tf.make_template('q1', vf_mlp, create_scope_now_=True)
 
-    with tf.variable_scope('q1', reuse=True):
-        v_x= vf_mlp(x)
-        # policy
-        mu, pi, logp_pi = policy(alpha, v_x, act_dim)
-        # mu_one_hot = tf.one_hot(mu, depth=act_dim)
-        pi_one_hot = tf.one_hot(pi, depth=act_dim)
+    v1_x = q1_tp(x)
 
-        # q1_pi = tf.reduce_sum(v_x*mu_one_hot, axis=1)   # use max Q(s,a)
-        q1_pi = tf.reduce_sum(v_x * pi_one_hot, axis=1)
+    # policy
+    mu, pi, logp_pi = policy(alpha, v1_x, act_dim)
 
+    mu_one_hot = tf.one_hot(mu, depth=act_dim)
+    pi_one_hot = tf.one_hot(pi, depth=act_dim)
 
-        mu_one_hot = tf.one_hot(mu, depth=act_dim)
+    q1 = tf.reduce_sum(v1_x * a_one_hot, axis=1)
 
-        # q1_pi = tf.reduce_sum(v_x*mu_one_hot, axis=1)   # use max Q(s,a)
-        q1_mu = tf.reduce_sum(v_x * mu_one_hot, axis=1)
+    q1_mu = tf.reduce_sum(v1_x * mu_one_hot, axis=1)  # use max Q(s,a)
+    q1_pi = tf.reduce_sum(v1_x * pi_one_hot, axis=1)
 
-    with tf.variable_scope('q1', reuse=True):
-        v_x2= vf_mlp(x2)
-        # policy
-        _, pi2, logp_pi2 = policy(alpha, v_x2, act_dim)
+    v1_x2 = q1_tp(x2)
+
+    # policy
+    mu_x2, pi_x2, logp_pi_x2 = policy(alpha, v1_x2, act_dim)
 
 
+    ################# Q2
 
-    # with tf.variable_scope('q2'):
-    #     q2 = tf.reduce_sum(vf_mlp(x)*a_one_hot, axis=1)
-    # with tf.variable_scope('q2', reuse=True):
-    #     # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
-    #     q2_pi = tf.reduce_sum(vf_mlp(x) * pi_one_hot, axis=1)
-    #
-    # with tf.variable_scope('q2', reuse=True):
-    #     # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
-    #     q2_mu = tf.reduce_sum(vf_mlp(x) * mu_one_hot, axis=1)
+    q2_tp = tf.make_template('q2', vf_mlp, create_scope_now_=True)
+
+    v2_x = q2_tp(x)
+
+    mu2, pi2, logp_pi2 = policy(alpha, v2_x, act_dim)
+
+    mu2_one_hot = tf.one_hot(mu2, depth=act_dim)
+
+    q2 = tf.reduce_sum(v2_x * a_one_hot, axis=1)
+
+    q2_mu = tf.reduce_sum(v2_x * mu2_one_hot, axis=1)  # use max Q(s,a)
+    q2_pi = tf.reduce_sum(v2_x * pi_one_hot, axis=1)
 
 
-    with tf.variable_scope('q2'):
-        v2_x = vf_mlp(x)
-        q2 = tf.reduce_sum(v2_x*a_one_hot, axis=1)
-        mu2, _, _ = policy(alpha, v2_x, act_dim)
-        mu2_one_hot = tf.one_hot(mu2, depth=act_dim)
-    with tf.variable_scope('q2', reuse=True):
-        # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
-        q2_pi = tf.reduce_sum(vf_mlp(x) * pi_one_hot, axis=1)
-
-    with tf.variable_scope('q2', reuse=True):
-        # q2_pi = tf.reduce_sum(vf_mlp(x)*mu_one_hot, axis=1)   # use max Q(s,a)
-        q2_mu = tf.reduce_sum(vf_mlp(x) * mu2_one_hot, axis=1)
+    # pi from max(v1_x, v2_x)
+    mu_max, pi_max, logp_pi_max = policy(alpha, tf.maximum(v1_x, v2_x), act_dim)
 
     # shape(?,)
-    return mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu
-
+    return mu, pi, logp_pi, logp_pi_x2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu
 
 
