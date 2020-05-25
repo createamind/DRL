@@ -49,7 +49,7 @@ Soft Actor-Critic
 """ make sure: max_ep_len < steps_per_epoch """
 
 def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=200, replay_size=int(1e5), gamma=0.99,
+        steps_per_epoch=5000, epochs=200, replay_size=int(5e5), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=200, start_steps=1000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -198,7 +198,11 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
 
     # Targets for Q and V regression
+    # scheme 1
     v_backup = tf.stop_gradient(min_q_pi)  ############################## alpha=0
+    # # scheme 2
+    # v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)
+
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
@@ -307,11 +311,15 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # that isn't based on the agent's state)
         d = False if ep_len==max_ep_len else d
 
+        # scheme 1
         # logp_pi
         logp_pi2 = get_logp_pi(o2)
         r_pi = r + gamma * (1 - d) * (- alpha * logp_pi2)
         # Store experience to replay buffer
         replay_buffer.store(o, a, r_pi, o2, d)
+
+        # # scheme 2
+        # replay_buffer.store(o, a, r, o2, d)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
@@ -398,12 +406,12 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--seed', '-s', type=int, default=5)
-    parser.add_argument('--epochs', type=int, default=5000)
+    parser.add_argument('--seed', '-s', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--max_ep_len', type=int, default=2000)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--exp_name', type=str, default='sqn_dev_LunarLander-v2_new')
+    parser.add_argument('--exp_name', type=str, default='sqn_dev_LunarLander-v2_scheme1')
     args = parser.parse_args()
 
 
