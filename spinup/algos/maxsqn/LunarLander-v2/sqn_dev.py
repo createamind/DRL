@@ -16,15 +16,17 @@ class ReplayBuffer:
     def __init__(self, obs_dim, act_dim, size):
         self.obs1_buf = np.zeros([size, obs_dim], dtype=np.float32)
         self.obs2_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.acts_buf = np.zeros([size, act_dim], dtype=np.float32)
+        self.acts_buf = np.zeros([size, act_dim[0]], dtype=np.float32)
+        self.prob_pi_buf = np.zeros([size, act_dim[1]], dtype=np.float32)
         self.rews_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, next_obs, done):
+    def store(self, obs, act, prob_pi, rew, next_obs, done):
         self.obs1_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.acts_buf[self.ptr] = act
+        self.prob_pi_buf[self.ptr] = prob_pi
         self.rews_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
         self.ptr = (self.ptr+1) % self.max_size
@@ -35,6 +37,7 @@ class ReplayBuffer:
         return dict(obs1=self.obs1_buf[idxs],
                     obs2=self.obs2_buf[idxs],
                     acts=self.acts_buf[idxs],
+                    prob_pi=self.prob_pi_buf[idxs],
                     rews=self.rews_buf[idxs],
                     done=self.done_buf[idxs])
 
@@ -49,7 +52,7 @@ Soft Actor-Critic
 """ make sure: max_ep_len < steps_per_epoch """
 
 def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
-        steps_per_epoch=5000, epochs=200, replay_size=int(5e5), gamma=0.99,
+        steps_per_epoch=5000, epochs=200, replay_size=int(5e4), gamma=0.99,
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=200, start_steps=1000,
         max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
     """
@@ -150,7 +153,7 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Inputs to computation graph
     x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
-
+    prob_pi_ph = core.placeholder(act_dim)
 
     ######
     if alpha == 'auto':
@@ -165,17 +168,17 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu = actor_critic(x_ph,x2_ph, a_ph, alpha, **ac_kwargs)
+        mu, pi, prob_pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu, value1, value2 = actor_critic(x_ph,x2_ph, a_ph, prob_pi_ph, alpha, **ac_kwargs)
 
     # Target value network
     with tf.variable_scope('target'):
-        _, _, logp_pi_, _,  _, _,q1_pi_, q2_pi_,q1_mu_, q2_mu_= actor_critic(x2_ph, x2_ph,a_ph, alpha,  **ac_kwargs)
+        _, _, _, logp_pi_, _,  _, _,q1_pi_, q2_pi_,q1_mu_, q2_mu_, value1_, value2_= actor_critic(x2_ph, x2_ph,a_ph, prob_pi_ph, alpha,  **ac_kwargs)
 
     # Experience buffer
     if isinstance(act_space, Box):
-        a_dim = act_dim
+        a_dim = [act_dim,act_dim]
     elif isinstance(act_space, Discrete):
-        a_dim = 1
+        a_dim = [1,act_dim]
     replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=a_dim, size=replay_size)
 
     # Count variables
@@ -194,7 +197,8 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 ######
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    min_q_pi = tf.minimum(value1_, value2_)
+    # min_q_pi = tf.minimum(q1_pi_, q2_pi_)
     # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
 
     # Targets for Q and V regression
@@ -256,6 +260,9 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     def get_logp_pi(o):
         return sess.run(logp_pi, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
+    def get_prob_pi(o):
+        return sess.run(prob_pi, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
+
     def test_agent(n=20):  # n: number of tests
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
         for j in range(n):
@@ -314,9 +321,10 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # scheme 1
         # logp_pi
         logp_pi2 = get_logp_pi(o2)
+        prob_pi2 = get_prob_pi(o2)
         r_pi = r + gamma * (1 - d) * (- alpha * logp_pi2)
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r_pi, o2, d)
+        replay_buffer.store(o, a, prob_pi2, r_pi, o2, d)
 
         # # scheme 2
         # replay_buffer.store(o, a, r, o2, d)
@@ -339,6 +347,7 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                 feed_dict = {x_ph: batch['obs1'],
                              x2_ph: batch['obs2'],
                              a_ph: batch['acts'],
+                             prob_pi_ph: batch['prob_pi'],
                              r_ph: batch['rews'],
                              d_ph: batch['done'],
                             }
