@@ -165,11 +165,11 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # Main outputs from computation graph
     with tf.variable_scope('main'):
-        mu, pi, logp_pi, logp_pi2, q1, q2, q1_pi, q2_pi, q1_mu, q2_mu = actor_critic(x_ph,x2_ph, a_ph, alpha, **ac_kwargs)
+        mu, pi, q1, q2, v1_x2, v2_x2, pi_log, pi_log_x2 = actor_critic(x_ph, x2_ph, a_ph, alpha, **ac_kwargs)
 
     # Target value network
     with tf.variable_scope('target'):
-        _, _, logp_pi_, _,  _, _,q1_pi_, q2_pi_,q1_mu_, q2_mu_= actor_critic(x2_ph, x2_ph,a_ph, alpha,  **ac_kwargs)
+        mu_, pi_, q1_, q2_, v1_x2_, v2_x2_, pi_log_, pi_log_x2_ = actor_critic(x_ph, x2_ph, a_ph, alpha, **ac_kwargs)
 
     # Experience buffer
     if isinstance(act_space, Box):
@@ -186,6 +186,7 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
 ######
+    logp_pi_ = tf.reduce_sum(tf.exp(pi_log_) * pi_log_, axis=1)
     if isinstance(alpha,tf.Tensor):
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(logp_pi_ + target_entropy))
 
@@ -194,14 +195,26 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 ######
 
     # Min Double-Q:
-    min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    # scheme 111111
+    min_q_pi = tf.minimum(v1_x2_, v2_x2_)
+    # min_q_pi = tf.minimum(q1_pi_, q2_pi_)
     # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
+    v_backup = min_q_pi - alpha * pi_log_x2
+    v_backup = tf.reduce_sum(tf.exp(pi_log_x2)*v_backup, axis=1)
 
-    # Targets for Q and V regression
-    # # scheme 1
-    # v_backup = tf.stop_gradient(min_q_pi)  ############################## alpha=0
-    # scheme 2
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)
+    # # scheme 222222
+    # min_q_pi = tf.minimum(tf.reduce_sum(tf.exp(pi_log_x2)*v1_x2_, axis=1), tf.reduce_sum(tf.exp(pi_log_x2)*v2_x2_, axis=1))
+    # v_backup = min_q_pi - alpha * tf.reduce_sum(tf.exp(pi_log_x2) * pi_log_x2, axis=1)
+
+    # # scheme 333333
+    # min_q_pi = tf.minimum(v1_x2_, v2_x2_)
+    # # min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    # # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
+    # v_backup = min_q_pi - alpha * pi_log_x2
+    # v_backup = tf.reduce_max(v_backup, axis=1)
+
+
+    v_backup = tf.stop_gradient(v_backup)
 
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
@@ -253,8 +266,8 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
-    def get_logp_pi(o):
-        return sess.run(logp_pi, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
+    # def get_logp_pi(o):
+    #     return sess.run(logp_pi, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
     def test_agent(n=20):  # n: number of tests
         global sess, mu, pi, q1, q2, q1_pi, q2_pi
@@ -406,12 +419,12 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--seed', '-s', type=int, default=1)
+    parser.add_argument('--seed', '-s', type=int, default=4)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--max_ep_len', type=int, default=2000)    # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--exp_name', type=str, default='sqn_dev_LunarLander-v2_scheme1')
+    parser.add_argument('--exp_name', type=str, default='sqn_dev_LunarLander-v2_scheme3')
     args = parser.parse_args()
 
 
