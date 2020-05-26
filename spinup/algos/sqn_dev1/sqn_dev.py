@@ -18,14 +18,16 @@ class ReplayBuffer:
         self.obs2_buf = np.zeros([size, obs_dim], dtype=np.float32)
         self.acts_buf = np.zeros([size, act_dim], dtype=np.float32)
         self.rews_buf = np.zeros(size, dtype=np.float32)
+        self.prob_pi_a_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, next_obs, done):
+    def store(self, obs, act, prob_pi_a, rew, next_obs, done):
         self.obs1_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.acts_buf[self.ptr] = act
         self.rews_buf[self.ptr] = rew
+        self.prob_pi_a_buf[self.ptr] = prob_pi_a
         self.done_buf[self.ptr] = done
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
@@ -36,6 +38,7 @@ class ReplayBuffer:
                     obs2=self.obs2_buf[idxs],
                     acts=self.acts_buf[idxs],
                     rews=self.rews_buf[idxs],
+                    prob_pi_a=self.prob_pi_a_buf[idxs],
                     done=self.done_buf[idxs])
 
 """
@@ -149,7 +152,7 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     ac_kwargs['action_space'] = env.action_space
 
     # Inputs to computation graph
-    x_ph, a_ph, x2_ph, r_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None)
+    x_ph, a_ph, x2_ph, r_ph, prob_pi_a_ph, d_ph = core.placeholders_from_space(obs_space, act_space, obs_space, None, None, None)
 
 
     ######
@@ -208,8 +211,6 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
     # # scheme 333333
     # min_q_pi = tf.minimum(v1_x2_, v2_x2_)
-    # # min_q_pi = tf.minimum(q1_pi_, q2_pi_)
-    # # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
     # v_backup = min_q_pi - alpha * pi_log_x2
     # v_backup = tf.reduce_max(v_backup, axis=1)
 
@@ -220,8 +221,13 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 
 
     # Soft actor-critic losses
-    q1_loss = 0.5 * tf.reduce_mean((q_backup - q1)**2)
-    q2_loss = 0.5 * tf.reduce_mean((q_backup - q2)**2)
+    a_one_hot = tf.one_hot(a_ph[..., 0], depth=act_dim)
+    prob_pi_a_cur = tf.reduce_sum(tf.exp(pi_log) * a_one_hot, axis=1)
+    pi_ratio = tf.stop_gradient(tf.clip_by_value(prob_pi_a_cur/prob_pi_a_ph, 0.2, 1.2))   # 0.2, 1.2
+    # pi_ratio = 1.0
+
+    q1_loss = 0.5 * tf.reduce_mean(pi_ratio*(q_backup - q1)**2)
+    q2_loss = 0.5 * tf.reduce_mean(pi_ratio*(q_backup - q2)**2)
     value_loss = q1_loss + q2_loss
 
     # # Policy train op
@@ -265,6 +271,9 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
         return sess.run(act_op, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
+
+    def get_pi_log(o):
+        return sess.run(pi_log, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
 
     # def get_logp_pi(o):
     #     return sess.run(logp_pi, feed_dict={x_ph: np.expand_dims(o, axis=0)})[0]
@@ -332,7 +341,8 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         # replay_buffer.store(o, a, r_pi, o2, d)
 
         # scheme 2
-        replay_buffer.store(o, a, r, o2, d)
+        prob_pi_a = np.exp(get_pi_log(o))[a]
+        replay_buffer.store(o, a, prob_pi_a, r, o2, d)
 
         # Super critical, easy to overlook step: make sure to update
         # most recent observation!
@@ -353,6 +363,7 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
                              x2_ph: batch['obs2'],
                              a_ph: batch['acts'],
                              r_ph: batch['rews'],
+                             prob_pi_a_ph: batch['prob_pi_a'],
                              d_ph: batch['done'],
                             }
                 # step_ops = [q1_loss, q2_loss, q1, q2, logp_pi, alpha, train_pi_op, train_value_op, target_update]
@@ -375,9 +386,9 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
         if t > 0 and t % steps_per_epoch == 0:
             epoch = t // steps_per_epoch
 
-            # # Save model
-            # if (epoch % save_freq == 0) or (epoch == epochs-1):
-            #     logger.save_state({'env': env}, None)
+            # Save model
+            if (epoch % save_freq == 0) or (epoch == epochs-1):
+                logger.save_state({'env': env}, None)
 
             # Test the performance of the deterministic version of the agent.
 
@@ -419,12 +430,12 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--seed', '-s', type=int, default=4)
+    parser.add_argument('--seed', '-s', type=int, default=5)
     parser.add_argument('--epochs', type=int, default=500)
-    parser.add_argument('--max_ep_len', type=int, default=2000)    # make sure: max_ep_len < steps_per_epoch
+    parser.add_argument('--max_ep_len', type=int, default=990)    #  default max_ep_len = 1000, done=True. # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--exp_name', type=str, default='sqn_dev_LunarLander-v2_scheme3')
+    parser.add_argument('--exp_name', type=str, default='SQN-IS-clip0.2_1.2')
     args = parser.parse_args()
 
 
