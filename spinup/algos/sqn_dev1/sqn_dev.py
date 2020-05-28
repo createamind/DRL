@@ -198,16 +198,16 @@ def maxsqn(env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), seed=0,
 ######
 
     # Min Double-Q:
-    # scheme 111111
-    min_q_pi = tf.minimum(v1_x2_, v2_x2_)
-    # min_q_pi = tf.minimum(q1_pi_, q2_pi_)
-    # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
-    v_backup = min_q_pi - alpha * pi_log_x2
-    v_backup = tf.reduce_sum(tf.exp(pi_log_x2)*v_backup, axis=1)
+    # # scheme 111111
+    # min_q_pi = tf.minimum(v1_x2_, v2_x2_)
+    # # min_q_pi = tf.minimum(q1_pi_, q2_pi_)
+    # # min_q_pi = tf.minimum(q1_mu_, q2_mu_)
+    # v_backup = min_q_pi - alpha * pi_log_x2
+    # v_backup = tf.reduce_sum(tf.exp(pi_log_x2)*v_backup, axis=1)
 
-    # # scheme 222222
-    # min_q_pi = tf.minimum(tf.reduce_sum(tf.exp(pi_log_x2)*v1_x2_, axis=1), tf.reduce_sum(tf.exp(pi_log_x2)*v2_x2_, axis=1))
-    # v_backup = min_q_pi - alpha * tf.reduce_sum(tf.exp(pi_log_x2) * pi_log_x2, axis=1)
+    # scheme 222222
+    min_q_pi = tf.minimum(tf.reduce_sum(tf.exp(pi_log_x2)*v1_x2_, axis=1), tf.reduce_sum(tf.exp(pi_log_x2)*v2_x2_, axis=1))
+    v_backup = min_q_pi - alpha * tf.reduce_sum(tf.exp(pi_log_x2) * pi_log_x2, axis=1)
 
     # # scheme 333333
     # min_q_pi = tf.minimum(v1_x2_, v2_x2_)
@@ -430,12 +430,12 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=300)
     parser.add_argument('--l', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--seed', '-s', type=int, default=5)
+    parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--max_ep_len', type=int, default=990)    #  default max_ep_len = 1000, done=True. # make sure: max_ep_len < steps_per_epoch
     parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--exp_name', type=str, default='SQN-IS-clip0.2_1.2')
+    parser.add_argument('--exp_name', type=str, default='SQN-IS-scheme2-clip0.2_1.2')
     args = parser.parse_args()
 
 
