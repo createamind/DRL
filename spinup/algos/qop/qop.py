@@ -317,9 +317,9 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
             # SPPO NO.1: add entropy
             # rh = r - args.alpha * logp_t
             if args.alpha == 'auto':
-                rh = r + sess.run(alpha) * gamma * h_t
+                rh = r + sess.run(alpha) * h_t
             else:
-                rh = r + alpha * gamma * h_t           # exact entropy
+                rh = r + alpha * h_t           # exact entropy
 
             # save and log
             buf.store(o, a, rh, v_t, q_t, logp_t)
