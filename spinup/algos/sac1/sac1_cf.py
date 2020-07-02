@@ -155,7 +155,7 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     
     # Target value network
     with tf.variable_scope('target'):
-        _, _, logp_pi_, _, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, x2_ph, a_ph, **ac_kwargs)
+        _, _, logp_pi_, logp_pi2_, _, _,q1_pi_, q2_pi_= actor_critic(x2_ph, x2_ph, a_ph, **ac_kwargs)
 
     # Experience buffer
     replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
@@ -183,7 +183,7 @@ def sac1(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     min_q_pi = tf.minimum(q1_pi_, q2_pi_)
 
     # Targets for Q and V regression
-    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2)
+    v_backup = tf.stop_gradient(min_q_pi - alpha * logp_pi2_)
     q_backup = r_ph + gamma*(1-d_ph)*v_backup
 
 
