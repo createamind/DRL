@@ -207,14 +207,16 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
 
     ######
     if args.alpha == 'auto':
-        target_entropy = 0.35
+        #target_entropy = 0.35
 
         log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=tf.log(0.01))
-        alpha = tf.exp(log_alpha)
+        alpha = tf.minimum(0.2, tf.exp(log_alpha))
+
+        target_entropy = tf.stop_gradient(0.1*v*(1-gamma)/alpha)
 
         alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(tf.clip_by_value(-h + target_entropy, 0.0, 1000.0 )))
 
-        alpha_optimizer = MpiAdamOptimizer(learning_rate=1e-5)
+        alpha_optimizer = MpiAdamOptimizer(learning_rate=1e-4)
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
     else:
         alpha = args.alpha
@@ -235,13 +237,13 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
     pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
     # ### Scheme2: SPPO NO.2: add entropy
-    # adv_logp = adv_ph - tf.stop_gradient(alpha) * logp_old_ph
-    # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
-    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+    #adv_logp = adv_ph - tf.stop_gradient(alpha) * logp_old_ph
+    #min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
+    #pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
     # ### Scheme3: SPPO NO.3: add entropy
-    # min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
-    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
+    #min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
+    #pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
 
 
     v_loss = tf.reduce_mean((ret_ph - v)**2)
@@ -365,14 +367,14 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--ppo', type=bool, default=False)
-    parser.add_argument('--alpha', default=0.2, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default='auto', help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
     parser.add_argument('--seed', '-s', type=int, default=18)
     parser.add_argument('--cpu', type=int, default=8)
     parser.add_argument('--steps', type=int, default=8000)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--exp_name', type=str, default='LL2_sppo_alpha0.2_cpu8_8000_scheme1_18')#'LL2_cpu4_6000_alphaAuto_et0.35_simgaNew1.0')
+    parser.add_argument('--exp_name', type=str, default='LL2_sppo_alpha_autov_cpu8_8000_scheme1')#'LL2_cpu4_6000_alphaAuto_et0.35_simgaNew1.0')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
