@@ -148,8 +148,8 @@ Policies
 """
 
 LOG_STD_MAX = 2
-LOG_STD_MIN = -20
-
+LOG_STD_MIN = -3
+LOG_STD_DELTA = 1.0  # 2.0 NOT working
 def mlp_gaussian_policy(x, act_dim, hidden_sizes, activation, output_activation):
 
     net = mlp(x, list(hidden_sizes), activation, activation)
@@ -174,19 +174,60 @@ def mlp_gaussian_policy(x, act_dim, hidden_sizes, activation, output_activation)
     through log_std where clipping wouldn't, but I don't know if
     it makes much of a difference.
     """
-    log_std = tf.layers.dense(net, act_dim, activation=tf.tanh)
-    log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+    # net1 = mlp(x, list(hidden_sizes), activation, activation)
+    # log_std = tf.layers.dense(net1, act_dim, activation=tf.tanh)
+    # log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+    # net1 = tf.stop_gradient(net)
+    # log_std = tf.layers.dense(net1, act_dim, activation=tf.tanh)
+    # log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+    # log_std = 0.0
+
+    # log_std = tf.layers.dense(net, act_dim, activation=None)
+    # log_std = clip_but_pass_gradient(log_std, l=-2.0, u=2.0)
+    # log_std = tf.tanh(log_std)*2.0
+    #
+    #
+
+
+    # log_std = tf.layers.dense(net, act_dim, activation=None)
+    # log_std = clip_but_pass_gradient(log_std, l=-2.0, u=2.0) # tf.clip_by_value(log_std, -20.0, 2.0)
+
+    # log_std = tf.get_variable(name='log_std', initializer=-0.5 * np.ones(act_dim, dtype=np.float32))
+
+
+
+    # scheme x  # working
+    log_std = tf.get_variable(name='log_std', initializer=-0.5 * np.ones(act_dim, dtype=np.float32))
+    # scheme1
+    # log_std1 = tf.layers.dense(net, act_dim, activation=tf.tanh) * LOG_STD_DELTA
+    # scheme2
+    log_std1 = tf.layers.dense(net, act_dim, activation=tf.tanh)
+    log_std1 = -LOG_STD_DELTA * 0.5*(1-log_std1)
+    log_std = log_std + log_std1
+
+    # # scheme y  # NOT working, need regularization?
+    # log_std = tf.layers.dense(net, act_dim, activation=tf.tanh)
+    # log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
+
+    # # # scheme z  # working sometimes, need regularization?
+    # net1 = tf.stop_gradient(net)
+    # log_std = tf.layers.dense(net1, act_dim, activation=tf.tanh)
+    # log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
 
     std = tf.exp(log_std)
     pi = mu + tf.random_normal(tf.shape(mu)) * std
     logp_pi = gaussian_likelihood(pi, mu, log_std)
-    return mu, pi, logp_pi, log_std
+    h = tf.reduce_sum(tf.ones(shape=tf.shape(mu)) * (np.log(2 * np.pi * np.e) + 2 * log_std) / 2, axis=1)  # exact entropy
+    return mu, pi, logp_pi, log_std, h
 
 def apply_squashing_func(mu, pi, logp_pi):
     mu = tf.tanh(mu)
     pi = tf.tanh(pi)
     # To avoid evil machine precision error, strictly clip 1-pi**2 to [0,1] range.
     logp_pi -= tf.reduce_sum(tf.log(clip_but_pass_gradient(1 - pi**2, l=0, u=1) + 1e-6), axis=1)
+    # logp_pi -= tf.reduce_sum(tf.log(tf.clip_by_value(1 - pi ** 2, 0.0, 1.0) + 1e-6), axis=1)
     return mu, pi, logp_pi
 
 """
@@ -207,9 +248,10 @@ def mlp_actor_critic(x, a, hidden_sizes=(64,64), activation=tf.tanh,
 
     with tf.variable_scope('pi'):
         # pi, logp, logp_pi, h = policy(x, a, hidden_sizes, activation, output_activation, action_space)
-        mu, pi, logp_pi, log_std = policy(x, act_dim, hidden_sizes, activation, output_activation)
+        mu, pi, logp_pi, log_std, h = policy(x, act_dim, hidden_sizes, activation, output_activation)
 
-        a_mu = 0.5 * tf.log((1 + a / action_scale) / (1 - a / action_scale + 1e-10))  # tanh-1
+        a_s = tf.clip_by_value(a / action_scale, -1.0, 1.0)
+        a_mu = 0.5 * tf.log((1 + a_s) / (1 - a_s + 1e-6))  # tanh-1
         logp_a = gaussian_likelihood(a_mu, mu, log_std)
         _, _, logp_a = apply_squashing_func(mu, a_mu, logp_a)
 
@@ -220,4 +262,4 @@ def mlp_actor_critic(x, a, hidden_sizes=(64,64), activation=tf.tanh,
 
     with tf.variable_scope('v'):
         v = tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
-    return pi, logp_a, logp_pi, -logp_pi, v
+    return pi, logp_a, logp_pi, h, v, log_std

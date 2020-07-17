@@ -188,7 +188,7 @@ def sppo2(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), se
     adv_ph, ret_ph, logp_old_ph = core.placeholders(None, None, None)
 
     # Main outputs from computation graph
-    pi, logp, logp_pi, h, v = actor_critic(x_ph, a_ph, **ac_kwargs)
+    pi, logp, logp_pi, h, v, log_std = actor_critic(x_ph, a_ph, **ac_kwargs)
 
     # Need all placeholders in *this* order later (to zip with data from buffer)
     all_phs = [x_ph, a_ph, adv_ph, ret_ph, logp_old_ph]
@@ -229,25 +229,26 @@ def sppo2(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), se
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv))
 
 
-    # ### Scheme1: SPPO NO.2: add entropy
-    # adv_logp = adv_ph - tf.stop_gradient(alpha) * tf.stop_gradient(logp)
-    # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
-    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
+    ### Scheme1: SPPO NO.2: add entropy
+    adv_logp = adv_ph - tf.stop_gradient(alpha) * tf.stop_gradient(logp)
+    min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
+    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
     # ### Scheme3: SPPO NO.3: add entropy
     # adv_logp = adv_ph - tf.stop_gradient(alpha) * logp_old_ph
     # min_adv = tf.where(adv_logp>0, (1+clip_ratio)*adv_logp, (1-clip_ratio)*adv_logp)
     # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_logp, min_adv))
 
-    ### Scheme2: SPPO NO.2: add entropy
-    min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
-    pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
+    # ### Scheme2: SPPO NO.2: add entropy
+    # min_adv = tf.where(adv_ph > 0, (1 + clip_ratio) * adv_ph, (1 - clip_ratio) * adv_ph)
+    # pi_loss = -tf.reduce_mean(tf.minimum(ratio * adv_ph, min_adv) + tf.stop_gradient(alpha)*h)
 
 
     v_loss = tf.reduce_mean((ret_ph - v)**2)
 
     # Info (useful to watch during learning)
     approx_kl = tf.reduce_mean(logp_old_ph - logp)      # a sample estimate for KL-divergence, easy to compute
+    logp_a_x, logp_pi_x, log_std_x = tf.reduce_mean(logp_old_ph), tf.reduce_mean(logp), tf.reduce_mean(log_std)
     approx_ent = tf.reduce_mean(h)                  # a sample estimate for entropy, also easy to compute
     clipped = tf.logical_or(ratio > (1+clip_ratio), ratio < (1-clip_ratio))
     clipfrac = tf.reduce_mean(tf.cast(clipped, tf.float32))
@@ -275,7 +276,7 @@ def sppo2(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), se
                 sess.run(train_alpha_op, feed_dict=inputs)
             _, kl = sess.run([train_pi, approx_kl], feed_dict=inputs)
             kl = mpi_avg(kl)
-            if kl > 1.5 * target_kl:
+            if kl > 1.5 * target_kl*1:
                 logger.log('Early stopping at step %d due to reaching max kl.'%i)
                 break
         logger.store(StopIter=i)
@@ -285,10 +286,11 @@ def sppo2(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), se
 
 
         # Log changes from update
-        pi_l_new, v_l_new, kl, cf = sess.run([pi_loss, v_loss, approx_kl, clipfrac], feed_dict=inputs)
+        pi_l_new, v_l_new, kl, cf, logp_a_v, logp_pi_v, log_std_v = sess.run([pi_loss, v_loss, approx_kl, clipfrac, logp_a_x, logp_pi_x, log_std_x], feed_dict=inputs)
         logger.store(LossPi=pi_l_old, LossV=v_l_old, 
                      KL=kl, Entropy=ent, ClipFrac=cf,
                      DeltaLossPi=(pi_l_new - pi_l_old),
+                     Logp_a_v = logp_a_v, Logp_pi_v = logp_pi_v, Log_std_v=log_std_v,
                      DeltaLossV=(v_l_new - v_l_old),
                      Alpha=sess.run(alpha) if args.alpha=='auto' else alpha)
 
@@ -351,6 +353,9 @@ def sppo2(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), se
         logger.log_tabular('Alpha', average_only=True)
         logger.log_tabular('Entropy', average_only=True)
         logger.log_tabular('KL', average_only=True)
+        logger.log_tabular('Logp_a_v', average_only=True)
+        logger.log_tabular('Logp_pi_v', average_only=True)
+        logger.log_tabular('Log_std_v', average_only=True)
         logger.log_tabular('ClipFrac', average_only=True)
         logger.log_tabular('StopIter', average_only=True)
         logger.log_tabular('Time', time.time()-start_time)
@@ -365,14 +370,14 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--ppo', type=bool, default=False)
-    parser.add_argument('--alpha', default=0.0, help="alpha can be either 'auto' or float(e.g:0.2).")
+    parser.add_argument('--alpha', default=0.1, help="alpha can be either 'auto' or float(e.g:0.2).")
     parser.add_argument('--pi_lr', type=float, default=3e-4)
     parser.add_argument('--vf_lr', type=float, default=1e-3)
-    parser.add_argument('--seed', '-s', type=int, default=15)
+    parser.add_argument('--seed', '-s', type=int, default=199)
     parser.add_argument('--cpu', type=int, default=4)
-    parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=2000)
-    parser.add_argument('--exp_name', type=str, default='LLC2_sppo2_alpha0.0_cpu4_4000')#'LL2_cpu4_6000_alphaAuto_et0.35_simgaNew1.0')
+    parser.add_argument('--steps', type=int, default=8000)
+    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--exp_name', type=str, default='LLC2_sppo2_alpha0.1_cpu4_8000xxx_scheme1_199')#'LL2_cpu4_6000_alphaAuto_et0.35_simgaNew1.0')
     args = parser.parse_args()
 
     mpi_fork(args.cpu)  # run parallel code with mpi
