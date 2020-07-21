@@ -210,11 +210,11 @@ def sppo(args, env_fn, actor_critic=core.mlp_actor_critic, ac_kwargs=dict(), see
         #target_entropy = 0.35
 
         log_alpha = tf.get_variable('log_alpha', dtype=tf.float32, initializer=tf.log(0.01))
-        alpha = tf.minimum(0.2, tf.exp(log_alpha))
+        alpha = tf.clip_by_value(tf.exp(log_alpha), 0.01, 0.2)
 
         target_entropy = tf.stop_gradient(0.1*v*(1-gamma)/alpha)
 
-        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(tf.clip_by_value(-h + target_entropy, 0.0, 1000.0 )))
+        alpha_loss = tf.reduce_mean(-log_alpha * tf.stop_gradient(tf.clip_by_value(-h + target_entropy, -1000.0, 1000.0)))
 
         alpha_optimizer = MpiAdamOptimizer(learning_rate=1e-4)
         train_alpha_op = alpha_optimizer.minimize(loss=alpha_loss, var_list=[log_alpha])
